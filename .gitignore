@@ -1,0 +1,7 @@
+*.jpg
+*.cmake
+CMakeFiles
+CMakeFiles.txt
+CMakeCache.txt
+Makefile
+algost
