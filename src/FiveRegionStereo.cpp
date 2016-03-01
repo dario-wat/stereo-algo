@@ -5,6 +5,33 @@
 #include "st_util.h"
 #include <iostream>
 
+// Some functions that optimize the execution by pointing the compiler to vectorize the loops.
+
+inline void vectorize_add(int *a, int *b, int n) {
+    for (int i = 0; i < n; i++) {
+        a[i] += b[i];
+    }
+}
+
+inline void vectorize_subtract_mem(int *a, int *b, int *c, int n) {
+    for (int i = 0; i < n; i++) {
+        a[i] = b[i] - c[i];
+    }
+}
+
+inline void vectorize_sub_3idx(unsigned char *a, unsigned char *b, int *c, int n, int il, int ir)  {
+    for (int i = 0; i < n; i++, il++, ir++) {
+        c[i] = (int)a[il] - b[ir];
+    }
+}
+
+// using fabsf since abs doesn't work. I get about 5-10% speedup with this vectorization
+inline void vectorize_abs(int *a, int n) {
+    for (int i = 0; i < n; i++) {
+        a[i] = fabsf(a[i]);
+    }
+}
+
 FiveRegionStereo::FiveRegionStereo( int min_disparity, int max_disparity, int radiusX, int radiusY,
                                     int max_per_pixel_error, int validate_RtoL, double texture) {
     // Some requirements for parameters
@@ -78,22 +105,13 @@ void FiveRegionStereo::configure(int width) {
 }
 
 
-inline void vecc(int element_max, int index_left, int index_right, unsigned char *a, unsigned char *b, int *c) {
-    for (int r_col = 0; r_col < element_max; r_col++, index_left++, index_right++) {
-        c[r_col] = abs((int)a[index_left] - b[index_right]);
-    }
-}
 
 inline void FiveRegionStereo::compute_score_row_sad(int element_max, int index_left,
                                                     int index_right) {
-    // for (int r_col = 0; r_col < element_max; r_col++, index_left++, index_right++) {
-    //     int diff = left.data[index_left] - right.data[index_right];
-    //     element_score[r_col] = abs(diff);
-    // }
-    vecc(element_max, index_left, index_right, left.data, right.data, element_score);
+    vectorize_sub_3idx(left.data, right.data, element_score, element_max, index_left, index_right);
+    vectorize_abs(element_score, element_max);
 }
 
-// TODO replace .cols with width
 void FiveRegionStereo::compute_score_row(int row, int *scores) {
     // disparity as the outer loop to maximize common elements in inner loops,
     // reducing redundant calculations
@@ -119,7 +137,7 @@ void FiveRegionStereo::compute_score_row(int row, int *scores) {
         for (int i = 0; i < region_width; i++) {
             score += element_score[i];
         }
-
+ 
         scores[index_score] = score;
         index_score++;
 
@@ -325,17 +343,7 @@ void print_mat(cv::Mat m) {
     }
 }
 
-inline void tovec(int *a, int *b, int n) {
-    for (int i = 0; i < n; i++) {
-        a[i] += b[i];
-    }
-}
 
-inline void subb(int *a, int *b, int *c, int n) {
-    for (int i = 0; i < n; i++) {
-        a[i] = b[i] - c[i];
-    }
-}
 
 // ImplDisparityScoreSadRectFive_U8#computeRemainingRows
     // efficiently compute rest of the rows using previous results to avoid repeat computations
@@ -353,18 +361,12 @@ void FiveRegionStereo::compute_remaining_rows() {
 
         // subtract first row from vertical score
         int *scores = horizontal_score + length_horizontal * (old_row);
-        // for (int i = 0; i < length_horizontal; i++) {
-        //     active[i] = previous[i] - scores[i];
-        // }
-        subb(active, previous, scores, length_horizontal);
+        vectorize_subtract_mem(active, previous, scores, length_horizontal);
 
         compute_score_row(row, scores);
 
         // add the new score
-        // for (int i = 0; i < length_horizontal; i++) {
-        //     active[i] += scores[i];
-        // }
-        tovec(active, scores, length_horizontal);
+        vectorize_add(active, scores, length_horizontal);
 
         if (active_vertical_score >= region_height-1) {
             int *top = vertical_score + length_horizontal * ((active_vertical_score - 2*radiusY) % region_height);
@@ -372,7 +374,6 @@ void FiveRegionStereo::compute_remaining_rows() {
             int *bottom = vertical_score + length_horizontal * (active_vertical_score % region_height);
 
             compute_score_five(top, middle, bottom, five_score);
-
 
             // ImplSelectRectStandardBase_S32#process
             process(row - (1 + 4*radiusY) + 2*radiusY+1, five_score, disparity, radiusX*2, radiusX*4+1);
