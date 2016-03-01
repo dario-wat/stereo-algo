@@ -1,5 +1,9 @@
 *.jpg
 *.pgm
+*.gcda
+*.gcno
+*.gcov
+*.out
 *.cmake
 CMakeFiles
 CMakeFiles.txt

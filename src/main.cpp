@@ -356,7 +356,7 @@ int main(int argc, char **argv) {
     int region_size = atoi(argv[4]);
 
     clock_t begin = clock();
-    FiveRegionStereo frs = FiveRegionStereo(0, max_disp, region_size, region_size, 25, 6, 0.2);
+    FiveRegionStereo frs = FiveRegionStereo(0, max_disp, region_size, region_size, 25, 6, 0.0);
     frs.compute_disparity(img_left_g, img_right_g);
     
     // func(img_left_g, img_right_g, 0, max_disp, region_size, region_size, 25, 6, 0.2);

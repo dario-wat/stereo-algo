@@ -77,12 +77,20 @@ void FiveRegionStereo::configure(int width) {
     this->five_score = new int[length_horizontal];
 }
 
+
+inline void vecc(int element_max, int index_left, int index_right, unsigned char *a, unsigned char *b, int *c) {
+    for (int r_col = 0; r_col < element_max; r_col++, index_left++, index_right++) {
+        c[r_col] = abs((int)a[index_left] - b[index_right]);
+    }
+}
+
 inline void FiveRegionStereo::compute_score_row_sad(int element_max, int index_left,
                                                     int index_right) {
-    for (int r_col = 0; r_col < element_max; r_col++, index_left++, index_right++) {
-        int diff = left.data[index_left] - right.data[index_right];
-        element_score[r_col] = abs(diff);
-    }
+    // for (int r_col = 0; r_col < element_max; r_col++, index_left++, index_right++) {
+    //     int diff = left.data[index_left] - right.data[index_right];
+    //     element_score[r_col] = abs(diff);
+    // }
+    vecc(element_max, index_left, index_right, left.data, right.data, element_score);
 }
 
 // TODO replace .cols with width
@@ -172,22 +180,22 @@ void FiveRegionStereo::compute_score_five(int *top, int *middle, int *bottom, in
             int val3 = bottom[index_src+radiusX];
 
             // select the two best scores from outer for regions
-            if( val1 < val0 ) {
+            if (val1 < val0) {
                 int temp = val0;
                 val0 = val1;
                 val1 = temp;
             }
 
-            if( val3 < val2 ) {
+            if (val3 < val2) {
                 int temp = val2;
                 val2 = val3;
                 val3 = temp;
             }
 
-            if( val3 < val0 ) {
+            if (val3 < val0) {
                 s += val2;
                 s += val3;
-            } else if( val2 < val1 ) {
+            } else if (val2 < val1) {
                 s += val2;
                 s += val0;
             } else {
@@ -223,6 +231,7 @@ int FiveRegionStereo::select_right_to_left(int col, int *scores, int region_widt
     }
     return index_best;
 }
+
 
 void FiveRegionStereo::process(int row, int* scores, cv::Mat image_disparity, int radiusX, int region_width) {
     
@@ -316,6 +325,18 @@ void print_mat(cv::Mat m) {
     }
 }
 
+inline void tovec(int *a, int *b, int n) {
+    for (int i = 0; i < n; i++) {
+        a[i] += b[i];
+    }
+}
+
+inline void subb(int *a, int *b, int *c, int n) {
+    for (int i = 0; i < n; i++) {
+        a[i] = b[i] - c[i];
+    }
+}
+
 // ImplDisparityScoreSadRectFive_U8#computeRemainingRows
     // efficiently compute rest of the rows using previous results to avoid repeat computations
     /**
@@ -332,16 +353,18 @@ void FiveRegionStereo::compute_remaining_rows() {
 
         // subtract first row from vertical score
         int *scores = horizontal_score + length_horizontal * (old_row);
-        for (int i = 0; i < length_horizontal; i++) {
-            active[i] = previous[i] - scores[i];
-        }
+        // for (int i = 0; i < length_horizontal; i++) {
+        //     active[i] = previous[i] - scores[i];
+        // }
+        subb(active, previous, scores, length_horizontal);
 
         compute_score_row(row, scores);
 
         // add the new score
-        for (int i = 0; i < length_horizontal; i++) {
-            active[i] += scores[i];
-        }
+        // for (int i = 0; i < length_horizontal; i++) {
+        //     active[i] += scores[i];
+        // }
+        tovec(active, scores, length_horizontal);
 
         if (active_vertical_score >= region_height-1) {
             int *top = vertical_score + length_horizontal * ((active_vertical_score - 2*radiusY) % region_height);
@@ -349,6 +372,7 @@ void FiveRegionStereo::compute_remaining_rows() {
             int *bottom = vertical_score + length_horizontal * (active_vertical_score % region_height);
 
             compute_score_five(top, middle, bottom, five_score);
+
 
             // ImplSelectRectStandardBase_S32#process
             process(row - (1 + 4*radiusY) + 2*radiusY+1, five_score, disparity, radiusX*2, radiusX*4+1);
