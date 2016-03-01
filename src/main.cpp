@@ -355,11 +355,11 @@ int main(int argc, char **argv) {
     int max_disp = atoi(argv[3]);
     int region_size = atoi(argv[4]);
 
+    clock_t begin = clock();
     FiveRegionStereo frs = FiveRegionStereo(0, max_disp, region_size, region_size, 25, 6, 0.2);
     frs.compute_disparity(img_left_g, img_right_g);
-    cerr << "Outside" << endl;
-    clock_t begin = clock();
+    
     // func(img_left_g, img_right_g, 0, max_disp, region_size, region_size, 25, 6, 0.2);
-    cerr << double(clock()-begin) / CLOCKS_PER_SEC;
+    cerr << double(clock()-begin) / CLOCKS_PER_SEC << endl;
     return 0;
 }

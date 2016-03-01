@@ -32,8 +32,8 @@ private:
     int *column_score;
 
     // aux matrices
-    cv::Mat horizontal_score;
-    cv::Mat vertical_score;
+    int *horizontal_score;
+    int *vertical_score;
 
     // images
     cv::Mat left;
@@ -46,10 +46,10 @@ private:
     void compute_score_row(int row, int *scores);
     void compute_first_row();
     void compute_score_five(int *top, int *middle, int *bottom, int *score);
-    // int max_disparity_at_column_L2R(int col);
-    // int select_right_to_left(int col, int *scores);
+    int max_disparity_at_column_L2R(int col);
+    int select_right_to_left(int col, int *scores, int region_width);
     //TODO rename
-
+    void process(int row, int* scores, cv::Mat image_disparity, int radiusX, int region_width);
     void compute_remaining_rows();
 public:
     // max_per_pixel_error - The maximum allowed error.  Note this is per pixel error.

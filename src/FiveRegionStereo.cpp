@@ -14,6 +14,7 @@ FiveRegionStereo::FiveRegionStereo( int min_disparity, int max_disparity, int ra
     su::require(radiusX > 0, "radiusX must be greater than 0");
     su::require(radiusY > 0, "radiusY must be greater than 0");
 
+    // Set all the parameters
     this->min_disparity = min_disparity;
     this->max_disparity = max_disparity;
     this->radiusX = radiusX;
@@ -25,19 +26,22 @@ FiveRegionStereo::FiveRegionStereo( int min_disparity, int max_disparity, int ra
     this->max_error = region_height * region_width * max_per_pixel_error * 3;
     this->invalid_disparity = max_disparity - min_disparity + 1;
     
-    column_score = new int[max_disparity];
-    element_score = NULL;
-    five_score = NULL;
+    // Aux arrays
+    this->column_score = new int[max_disparity];
+    this->element_score = NULL;
+    this->five_score = NULL;
+    this->vertical_score = NULL;
+    this->horizontal_score = NULL;
 }
 
 FiveRegionStereo::~FiveRegionStereo() {
-    // delete column_score;
-    // if (element_score != NULL) {
-    //     delete element_score;
-    // }
-    // if (five_score != NULL) {
-    //     delete five_score;
-    // }
+    delete column_score;
+    if (element_score != NULL) {
+        delete element_score;
+    }
+    if (five_score != NULL) {
+        delete five_score;
+    }
 }
 
 void FiveRegionStereo::configure(int width) {
@@ -51,25 +55,32 @@ void FiveRegionStereo::configure(int width) {
     
     this->length_horizontal = width * (max_disparity - min_disparity);
     this->image_width = width;
-    horizontal_score = cv::Mat(region_height, length_horizontal, CV_32SC1);
-    vertical_score = cv::Mat(region_height, length_horizontal, CV_32SC1);
-    // if (element_score != NULL) {        // TODO i dont like this
-    //     delete element_score;
-    // }
-    element_score = new int[width];
-    // if (five_score != NULL) {
-    //     delete five_score;
-    // }
-    five_score = new int[length_horizontal];
 
-    // cv::Mat disparity = cv::Mat::ones(left.rows, left.cols, CV_32FC1) * (maxDisparity+1);
+    // Reinitialize matrices
+    if (horizontal_score != NULL) {
+        delete horizontal_score;
+    }
+    this->horizontal_score = new int[region_height*length_horizontal];
+    if (vertical_score != NULL) {
+        delete vertical_score;
+    }
+    this->vertical_score = new int[region_height*length_horizontal];
+    
+    // Reinitialize arrays with different sizes
+    if (element_score != NULL) {        // TODO i dont like this
+        delete element_score;
+    }
+    this->element_score = new int[width];
+    if (five_score != NULL) {
+        delete five_score;
+    }
+    this->five_score = new int[length_horizontal];
 }
 
-// TODO maybe remove masking
 inline void FiveRegionStereo::compute_score_row_sad(int element_max, int index_left,
                                                     int index_right) {
-    for (int r_col = 0; r_col < element_max; r_col++) {
-        int diff = (left.data[index_left++] & 0xFF) - (right.data[index_right++] & 0xFF);
+    for (int r_col = 0; r_col < element_max; r_col++, index_left++, index_right++) {
+        int diff = left.data[index_left] - right.data[index_right];
         element_score[r_col] = abs(diff);
     }
 }
@@ -82,14 +93,14 @@ void FiveRegionStereo::compute_score_row(int row, int *scores) {
         int disp_from_min = d - min_disparity;
 
         // number of individual columns the error is computed in
-        int col_max = left.cols - d;
+        int col_max = image_width - d;
         // number of regions that a score/error is computed in
         int score_max = col_max - region_width;
 
         // indices that data is read to/from for different data structures
-        int index_score = left.cols*disp_from_min + disp_from_min;
-        int index_left = left.cols*row + d;
-        int index_right = right.cols*row;
+        int index_score = image_width*disp_from_min + disp_from_min;
+        int index_left = image_width*row + d;
+        int index_right = image_width*row;
 
         // Fill elementScore with scores for individual elements for this row at disparity d
         compute_score_row_sad(col_max, index_left, index_right);
@@ -101,31 +112,37 @@ void FiveRegionStereo::compute_score_row(int row, int *scores) {
             score += element_score[i];
         }
 
-        // TODO maybe deal with these ++s
-        scores[index_score++] = score;
+        scores[index_score] = score;
+        index_score++;
 
         for (int col = 0; col < score_max; col++, index_score++) {
-            scores[index_score] = score += element_score[col+region_width] - element_score[col];
+            score += element_score[col+region_width] - element_score[col];
+            scores[index_score] = score;
         }
     }
 }
 
 void FiveRegionStereo::compute_first_row() {
-    int *first_row = vertical_score.ptr<int>(0);
+    int *first_row = vertical_score;
+    // std::cerr << first_row << std::endl;
+    // std::cerr << vertical_score.ptr<int>(1) << std::endl;
+    // std::cerr << vertical_score.ptr<int>(2) << std::endl;
+    std::cerr << first_row << std::endl;
+    std::cerr << vertical_score + image_width * 1 << std::endl;
+    std::cerr << vertical_score + image_width * 2 << std::endl;
     active_vertical_score = 1;
     
     // compute horizontal scores for first row block
     for (int row = 0; row < region_height; row++) {
-        int *scores = horizontal_score.ptr<int>(row);
+        int *scores = horizontal_score + length_horizontal * (row);
         compute_score_row(row, scores);
     }
     
-
     // compute score for the top possible row
     for (int i = 0; i < length_horizontal; i++) {
         int sum = 0;
         for (int row = 0; row < region_height; row++) {
-            sum += horizontal_score.at<int>(row, i);
+            sum += horizontal_score[row*length_horizontal + i];
         }
         first_row[i] = sum;
     }
@@ -183,14 +200,13 @@ void FiveRegionStereo::compute_score_five(int *top, int *middle, int *bottom, in
     }
 }
 
-int max_disparity_at_column_L2R(int col, int minDisparity, int maxDisparity) {
-    return 1+col-minDisparity-std::max(0,col-maxDisparity+1);
+int FiveRegionStereo::max_disparity_at_column_L2R(int col) {
+    return 1+col-min_disparity-std::max(0,col-max_disparity+1);
 }
 
-int select_right_to_left(int col, int *scores, int minDisparity, int maxDisparity,
-        int image_width, int region_width) {
+int FiveRegionStereo::select_right_to_left(int col, int *scores, int region_width) {
     // see how far it can search
-    int local_max = std::min(image_width-region_width, col+maxDisparity) - col-minDisparity;
+    int local_max = std::min(image_width-region_width, col+max_disparity) - col-min_disparity;
 
     int index_best = 0;
     int index_score = col;
@@ -208,19 +224,17 @@ int select_right_to_left(int col, int *scores, int minDisparity, int maxDisparit
     return index_best;
 }
 
-void process(int row, int* scores, cv::Mat image_disparity, int radiusX, int minDisparity,
-        int maxDisparity, int image_width, int region_width, int *column_score, int max_error,
-        int right_to_left_tolerance, double texture, int invalid_disparity) {
+void FiveRegionStereo::process(int row, int* scores, cv::Mat image_disparity, int radiusX, int region_width) {
     
-    int index_disparity = 0 + row*image_disparity.cols + radiusX + minDisparity;
-    // cerr << 0 << ' ' << row << ' ' << image_disparity.cols << ' ' << radiusX << ' ' << minDisparity << endl;
-    for (int col = minDisparity; col <= image_width-region_width; col++) {
+    int index_disparity = 0 + row*image_disparity.cols + radiusX + min_disparity;
+    // cerr << 0 << ' ' << row << ' ' << image_disparity.cols << ' ' << radiusX << ' ' << min_disparity << endl;
+    for (int col = min_disparity; col <= image_width-region_width; col++) {
         // Determine the number of disparities that can be considered at this column
         // make sure the disparity search doesn't go outside the image border
-        int local_max = max_disparity_at_column_L2R(col, minDisparity, maxDisparity);
+        int local_max = max_disparity_at_column_L2R(col);
 
         // index of the element being examined in the score array
-        int index_score = col - minDisparity;
+        int index_score = col - min_disparity;
 
         // select the best diparity
         int best_disparity = 0;
@@ -240,11 +254,10 @@ void process(int row, int* scores, cv::Mat image_disparity, int radiusX, int min
         if (score_best > max_error) {
             // make sure the error isnt too large
             best_disparity = invalid_disparity;
-        } else if (right_to_left_tolerance >= 0) {
+        } else if (validate_RtoL >= 0) {
             // if the associate is different going the other direction it is probably noise
-            int disparity_RtoL = select_right_to_left(col-best_disparity-minDisparity, scores,
-                    minDisparity, maxDisparity, image_width, region_width);
-            if (abs(disparity_RtoL-best_disparity) > right_to_left_tolerance) {
+            int disparity_RtoL = select_right_to_left(col-best_disparity-min_disparity, scores, region_width);
+            if (abs(disparity_RtoL-best_disparity) > validate_RtoL) {
                 best_disparity = invalid_disparity;
             }
         }
@@ -314,11 +327,11 @@ void FiveRegionStereo::compute_remaining_rows() {
     cv::Mat disparity = cv::Mat::ones(left.rows, left.cols, CV_32FC1) * (max_disparity+1);
     for (int row = region_height; row < left.rows; row++, active_vertical_score++) {
         int old_row = row % region_height;
-        int *previous = vertical_score.ptr<int>((active_vertical_score-1) % region_height);
-        int *active = vertical_score.ptr<int>((active_vertical_score) % region_height);
+        int *previous = vertical_score + length_horizontal *((active_vertical_score-1) % region_height);
+        int *active = vertical_score + length_horizontal *((active_vertical_score) % region_height);
 
         // subtract first row from vertical score
-        int *scores = horizontal_score.ptr<int>(old_row);
+        int *scores = horizontal_score + length_horizontal * (old_row);
         for (int i = 0; i < length_horizontal; i++) {
             active[i] = previous[i] - scores[i];
         }
@@ -331,16 +344,14 @@ void FiveRegionStereo::compute_remaining_rows() {
         }
 
         if (active_vertical_score >= region_height-1) {
-            int *top = vertical_score.ptr<int>((active_vertical_score - 2*radiusY) % region_height);
-            int *middle = vertical_score.ptr<int>((active_vertical_score - radiusY) % region_height);
-            int *bottom = vertical_score.ptr<int>(active_vertical_score % region_height);
+            int *top = vertical_score + length_horizontal * ((active_vertical_score - 2*radiusY) % region_height);
+            int *middle = vertical_score + length_horizontal * ((active_vertical_score - radiusY) % region_height);
+            int *bottom = vertical_score + length_horizontal * (active_vertical_score % region_height);
 
             compute_score_five(top, middle, bottom, five_score);
 
             // ImplSelectRectStandardBase_S32#process
-            process(row - (1 + 4*radiusY) + 2*radiusY+1, five_score, disparity, radiusX*2, min_disparity,
-                max_disparity, image_width, radiusX*4+1, column_score, max_error,
-                validate_RtoL, texture, invalid_disparity);
+            process(row - (1 + 4*radiusY) + 2*radiusY+1, five_score, disparity, radiusX*2, radiusX*4+1);
         }
     }
 
@@ -351,6 +362,7 @@ void FiveRegionStereo::compute_remaining_rows() {
 }
 
 void FiveRegionStereo::compute_disparity(const cv::Mat &left, const cv::Mat &right) {
+    //TODO check shape
     this->left = left;
     this->right = right;
     std::cerr << 'A' << std::endl;
