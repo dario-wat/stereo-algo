@@ -25,7 +25,6 @@ int main(int argc, char **argv) {
     FiveRegionStereo frs = FiveRegionStereo(0, max_disp, region_size, region_size, 25, 6, 0.0);
     cv::Mat disparity = frs.compute_disparity(img_left_g, img_right_g);
     
-    // func(img_left_g, img_right_g, 0, max_disp, region_size, region_size, 25, 6, 0.2);
     cerr << double(clock()-begin) / CLOCKS_PER_SEC << endl;
     su::print_mat_float(disparity);
     return 0;

@@ -40,7 +40,6 @@ private:
     // images
     cv::Mat left;
     cv::Mat right;
-    // cv::Mat disparity;
 
 private:
     void configure(const cv::Mat &left, const cv::Mat &right);
@@ -50,8 +49,7 @@ private:
     void compute_score_five(int *top, int *middle, int *bottom, int *score);
     int max_disparity_at_column_L2R(int col);
     int select_right_to_left(int col, int *scores, int region_width);
-    //TODO rename
-    void process(int row, int* scores, cv::Mat &image_disparity, int radiusX, int region_width);
+    void process_scores(int row, int* scores, cv::Mat &image_disparity);
     void compute_remaining_rows(cv::Mat &disparity);
 public:
     // max_per_pixel_error - The maximum allowed error.  Note this is per pixel error.
