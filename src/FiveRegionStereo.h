@@ -14,6 +14,8 @@
 // It computes dense disparity map with subpixel accuracy.
 class FiveRegionStereo {
 private:
+    static const int DISCRETIZER = 10000;
+
     int min_disparity, max_disparity;
     int region_width, region_height;
     int radiusX, radiusY;
@@ -41,16 +43,16 @@ private:
     // cv::Mat disparity;
 
 private:
-    void configure(int width);
-    inline void compute_score_row_sad(int element_max, int index_left, int index_right);
+    void configure(const cv::Mat &left, const cv::Mat &right);
+    void compute_score_row_sad(int element_max, int index_left, int index_right);
     void compute_score_row(int row, int *scores);
     void compute_first_row();
     void compute_score_five(int *top, int *middle, int *bottom, int *score);
     int max_disparity_at_column_L2R(int col);
     int select_right_to_left(int col, int *scores, int region_width);
     //TODO rename
-    void process(int row, int* scores, cv::Mat image_disparity, int radiusX, int region_width);
-    void compute_remaining_rows();
+    void process(int row, int* scores, cv::Mat &image_disparity, int radiusX, int region_width);
+    void compute_remaining_rows(cv::Mat &disparity);
 public:
     // max_per_pixel_error - The maximum allowed error.  Note this is per pixel error.
     //                       Try 10.
@@ -61,7 +63,7 @@ public:
     FiveRegionStereo(   int min_disparity, int max_disparity, int radiusX, int radiusY,
                         int max_per_pixel_error, int validate_RtoL, double texture);
     ~FiveRegionStereo();
-    void compute_disparity(const cv::Mat &left, const cv::Mat &right);
+    cv::Mat compute_disparity(const cv::Mat &left, const cv::Mat &right);
 };
 
 #endif
