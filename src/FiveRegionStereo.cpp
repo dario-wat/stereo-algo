@@ -74,18 +74,18 @@ FiveRegionStereo::FiveRegionStereo( int min_disparity, int max_disparity, int ra
 }
 
 FiveRegionStereo::~FiveRegionStereo() {
-    delete column_score;
+    delete[] column_score;
     if (horizontal_score != NULL) {
-        delete horizontal_score;
+        delete[] horizontal_score;
     }
     if (vertical_score != NULL) {
-        delete vertical_score;
+        delete[] vertical_score;
     }
     if (element_score != NULL) {
-        delete element_score;
+        delete[] element_score;
     }
     if (five_score != NULL) {
-        delete five_score;
+        delete[] five_score;
     }
 }
 
@@ -109,21 +109,21 @@ void FiveRegionStereo::configure(const cv::Mat &left, const cv::Mat &right) {
 
     // Reinitialize matrices
     if (horizontal_score != NULL) {
-        delete horizontal_score;
+        delete[] horizontal_score;
     }
     this->horizontal_score = new int[region_height*length_horizontal];
     if (vertical_score != NULL) {
-        delete vertical_score;
+        delete[] vertical_score;
     }
     this->vertical_score = new int[region_height*length_horizontal];
     
     // Reinitialize arrays with different sizes
     if (element_score != NULL) {
-        delete element_score;
+        delete[] element_score;
     }
     this->element_score = new int[width];
     if (five_score != NULL) {
-        delete five_score;
+        delete[] five_score;
     }
     this->five_score = new int[length_horizontal];
 }

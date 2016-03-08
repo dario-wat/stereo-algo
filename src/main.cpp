@@ -13,6 +13,10 @@ using std::endl;
 using std::cerr;
 
 int main(int argc, char **argv) {
+    if (argc != 5) {
+        cerr << "Usage: ./program <left_image> <right_image> <max_disparity> <region_size>" << endl;
+        exit(1);
+    }
 
     cv::Mat img_left_g;
     cv::cvtColor(cv::imread(argv[1]), img_left_g, CV_BGR2GRAY);
@@ -26,6 +30,9 @@ int main(int argc, char **argv) {
     cv::Mat disparity = frs.compute_disparity(img_left_g, img_right_g);
     
     cerr << double(clock()-begin) / CLOCKS_PER_SEC << endl;
-    su::print_mat_float(disparity);
+    // su::print_mat_float(disparity);
+    su::convert_to_disparity_visualize(disparity, disparity);
+    cv::imshow("Disparity", disparity);
+    cv::waitKey(0);
     return 0;
 }
