@@ -3,5 +3,12 @@ project(algos)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -O3")
 find_package(OpenCV REQUIRED)
-add_executable(algost main.cpp st_util.cpp FiveRegionStereo.cpp)
+
+add_executable(algost
+  main.cpp
+  st_util.cpp
+  FiveRegionStereo.cpp
+  DisparityPropagationStereo.cpp
+)
+
 target_link_libraries(algost ${OpenCV_LIBS})

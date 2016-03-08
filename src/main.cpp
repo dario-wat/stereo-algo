@@ -6,6 +6,7 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <ctime>
 #include "FiveRegionStereo.h"
+#include "DisparityPropagationStereo.h"
 #include "st_util.h"
 
 using std::cout;
@@ -26,13 +27,15 @@ int main(int argc, char **argv) {
     int region_size = atoi(argv[4]);
 
     clock_t begin = clock();
-    FiveRegionStereo frs = FiveRegionStereo(0, max_disp, region_size, region_size, 25, 6, 0.0);
-    cv::Mat disparity = frs.compute_disparity(img_left_g, img_right_g);
+    // FiveRegionStereo frs = FiveRegionStereo(0, max_disp, region_size, region_size, 25, 6, 0.0);
+    // cv::Mat disparity = frs.compute_disparity(img_left_g, img_right_g);
+    DisparityPropagationStereo dps = DisparityPropagationStereo(max_disp);
+    dps.compute_disparity(img_left_g, img_right_g);
     
-    cerr << double(clock()-begin) / CLOCKS_PER_SEC << endl;
+    cerr << "Full time: " << double(clock()-begin) / CLOCKS_PER_SEC << endl;
     // su::print_mat_float(disparity);
-    su::convert_to_disparity_visualize(disparity, disparity);
-    cv::imshow("Disparity", disparity);
-    cv::waitKey(0);
+    // su::convert_to_disparity_visualize(disparity, disparity);
+    // cv::imshow("Disparity", disparity);
+    // cv::waitKey(0);
     return 0;
 }

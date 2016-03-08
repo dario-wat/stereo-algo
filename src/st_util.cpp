@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <iostream>
 #include <opencv2/core/core.hpp>
+#include <opencv2/contrib/contrib.hpp>
 
 void su::require(bool condition, const std::string &msg) {
     if (!condition) {
@@ -36,11 +37,19 @@ void su::print_mat(const cv::Mat &m) {
 // Explicits instantiation for su::print_mat
 template void su::print_mat<float>(const cv::Mat &m);
 
-void su::convert_to_disparity_visualize(const cv::Mat &source, cv::Mat &dest) {
-    double minv, maxv;
-    cv::minMaxLoc(source, &minv, &maxv);
+void su::convert_to_disparity_visualize(const cv::Mat &source, cv::Mat &dest,
+                                        double minv, double maxv, bool color) {
     dest = (source - minv) * 255.0 / (maxv - minv);
     dest.convertTo(dest, CV_8UC1);
+    if (color) {
+        cv::applyColorMap(dest, dest, cv::COLORMAP_JET);
+    }
+}
+
+void su::convert_to_disparity_visualize(const cv::Mat &source, cv::Mat &dest, bool color) {
+    double minv, maxv;
+    cv::minMaxLoc(source, &minv, &maxv);
+    su::convert_to_disparity_visualize(source, dest, minv, maxv, color);
 }
 
 void su::print_mat_float(const cv::Mat &m) {
