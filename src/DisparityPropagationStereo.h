@@ -7,8 +7,15 @@ class DisparityPropagationStereo {
 private:
     int max_disparity;
 
+    // aux arrays
+    short *min3_disps;
+
     cv::Mat left, right;
     int height, width;
+
+    //TODO rename these disparities to raw
+    cv::Mat stable, disparity_left, disparity_right;
+    cv::Mat disparity;
 
 private:
     // Truncated Absolute Difference
@@ -19,9 +26,10 @@ private:
                             const uchar *right, float *cost, int width, int d, int tg, uchar tc,
                             double lambda);
     void preprocess();
+    void disparity_propagation();
 public:
     DisparityPropagationStereo(int max_disparity);
-    void compute_disparity(const cv::Mat &left, const cv::Mat &right);
+    cv::Mat compute_disparity(const cv::Mat &left, const cv::Mat &right);
 };
 
 #endif

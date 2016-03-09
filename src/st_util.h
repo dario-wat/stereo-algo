@@ -14,6 +14,8 @@ namespace su {
 
     // Prints opencv Mat that contains floats with 1 decimal digit precision
     void print_mat_float(const cv::Mat &m);
+
+    uint64_t rdtsc();
 }
 
 #endif

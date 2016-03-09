@@ -36,6 +36,7 @@ void su::print_mat(const cv::Mat &m) {
 
 // Explicits instantiation for su::print_mat
 template void su::print_mat<float>(const cv::Mat &m);
+template void su::print_mat<short>(const cv::Mat &m);
 
 void su::convert_to_disparity_visualize(const cv::Mat &source, cv::Mat &dest,
                                         double minv, double maxv, bool color) {
@@ -59,4 +60,10 @@ void su::print_mat_float(const cv::Mat &m) {
         }
         printf("\n");
     }
+}
+
+uint64_t su::rdtsc() {
+    unsigned int lo,hi;
+    __asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
+    return ((uint64_t)hi << 32) | lo;
 }

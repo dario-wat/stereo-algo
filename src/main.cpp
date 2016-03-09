@@ -30,9 +30,10 @@ int main(int argc, char **argv) {
     // FiveRegionStereo frs = FiveRegionStereo(0, max_disp, region_size, region_size, 25, 6, 0.0);
     // cv::Mat disparity = frs.compute_disparity(img_left_g, img_right_g);
     DisparityPropagationStereo dps = DisparityPropagationStereo(max_disp);
-    dps.compute_disparity(img_left_g, img_right_g);
+    cv::Mat disparity_map = dps.compute_disparity(img_left_g, img_right_g);
     
     cerr << "Full time: " << double(clock()-begin) / CLOCKS_PER_SEC << endl;
+    su::print_mat<short>(disparity_map);
     // su::print_mat_float(disparity);
     // su::convert_to_disparity_visualize(disparity, disparity);
     // cv::imshow("Disparity", disparity);
