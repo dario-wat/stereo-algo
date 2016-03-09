@@ -49,10 +49,16 @@ inline void min_trunc_shift_vectorize(float *c, float t, int n, int d) {
     }
 }
 
+static const float SIGMA_S = 42.5f / 6;
+static const float SIGMA_R = 22.5f / 6;
+
 
 DisparityPropagationStereo::DisparityPropagationStereo(int max_disparity) {
     su::require(max_disparity > 0, "Max disparity must be positive");
     this->max_disparity = max_disparity;
+
+    // Fill up the table of alpha values
+    
 }
 
 //TODO lambda to float
@@ -79,19 +85,101 @@ inline void DisparityPropagationStereo::tad_r(  const short *dx_left, const ucha
     }
 }
 
-cv::Mat lr_check(const cv::Mat &disparity_left, const cv::Mat &disparity_right) {
+// Left-right consistency check to create stability map. A pixel is stable if
+// D_left(x,y) == D_right( (x,y) - (D_left(x,y),0) )
+cv::Mat DisparityPropagationStereo::lr_check(   const cv::Mat &disparity_left,
+                                                const cv::Mat &disparity_right) {
     cv::Mat stable = cv::Mat(disparity_left.rows, disparity_left.cols, CV_8UC1);
     for (int row = 0; row < disparity_left.rows; row++) {
         for (int col = 0; col < disparity_left.cols; col++) {
-            short d = disparity_left.at<short>(row, col);
-            if (col - (int)d < 0 || d != disparity_right.at<short>(row, col-d)) {
-                stable.at<uchar>(row, col) = 0;
-            } else {
-                stable.at<uchar>(row, col) = 255;
-            }
+            short d_left = disparity_left.at<short>(row, col);
+            short d_right = disparity_right.at<short>(row, col-d_left);
+            stable.at<uchar>(row, col) = col - d_left < 0 || d_left != d_right ? 0 : 255;
         }
     }
     return stable;
+}
+
+// Performs winner-take-all optimization using auxilliray array to deal with cache locality
+void DisparityPropagationStereo::wta(   cv::Mat &disparity, const float *cost_volume, int max_d,
+                                        int rows, int cols) {
+    if (disparity.rows != rows || disparity.cols != cols || disparity.type() != CV_16SC1) {
+        disparity = cv::Mat(rows, cols, CV_16SC1);
+    }
+    cv::Mat min_costs = cv::Mat::ones(rows, cols, CV_32FC1) * FL_MAX;
+    for (int d = 0; d < max_d; d++) {
+        for (int row = 0; row < rows; row++) {
+            for (int col = 0; col < cols; col++) {
+                if (cost_volume[d*cols*rows + row*cols + col] < min_costs.at<float>(row, col)) {
+                    min_costs.at<float>(row, col) = cost_volume[d*cols*rows + row*cols + col];
+                    disparity.at<short>(row, col) = d;
+                }
+            }
+        }
+    }
+}
+
+//TODO get rid of these global constants
+// Geodesic filter as explained in the paper
+void DisparityPropagationStereo::geodesic_filter(float *cost_volume, const cv::Mat &img, int max_d) {
+    int rows = img.rows, cols = img.cols;
+    // Instead of calculating alphas, this way I can create lookup table and get the values much
+    // faster. There is no need to do this in the constructor since the overhead of creating
+    // this table compared to the rest of the filter is negligible.
+    float alpha[512];
+    for (int diff = -255; diff < 256; diff++) {
+        alpha[diff+255] = exp(-1/SIGMA_S - std::abs(diff) / SIGMA_R);
+    }
+
+    // For some reason in the first two loops it runs faster if row and col loops are placed
+    // in this order even though it increases cache misses. When trying to improve cache locality
+    // loops run slower.
+
+    // Horizontal left to right pass
+    for (int d = 0; d < max_d; d++) {
+        for (int col = 1; col < cols; col++) {
+            for (int row = 0; row < rows; row++) {
+                float a = alpha[255 + img.at<uchar>(row, col) - img.at<uchar>(row, col-1)];
+                cost_volume[d*cols*rows + row*img.cols + col] +=
+                    a * cost_volume[d*cols*rows + row*cols + col-1];
+            }
+        }
+    }
+
+    // Horizontal right to left pass
+    for (int d = 0; d < max_d; d++) {
+        for (int col = cols-2; col >= 0; col--) {
+            for (int row = 0; row < rows; row++) {
+                float a = alpha[255 + img.at<uchar>(row, col) - img.at<uchar>(row, col+1)];
+                cost_volume[d*cols*rows + row*cols + col] =
+                    (1 - a*a) * cost_volume[d*cols*rows + row*cols + col]
+                    + a * cost_volume[d*cols*rows + row*cols + col+1];
+            }
+        }
+    }
+
+    // Vertical top to bottom pass
+    for (int d = 0; d < max_d; d++) {
+        for (int row = 1; row < rows; row++) {
+            for (int col = 0; col < cols; col++) {
+                float a = alpha[255 + img.at<uchar>(row, col) - img.at<uchar>(row-1, col)];
+                cost_volume[d*cols*rows + row*cols + col] +=
+                    a * cost_volume[d*cols*rows + (row-1)*cols + col];
+            }
+        }
+    }
+
+    // Vertical bottom to top pass
+    for (int d = 0; d < max_d; d++) {
+        for (int row = rows-2; row >= 0; row--) {
+            for (int col = 0; col < cols; col++) {
+                float a = alpha[255 + img.at<uchar>(row, col) - img.at<uchar>(row+1, col)];
+                cost_volume[d*cols*rows + row*cols + col] =
+                    (1 - a*a) * cost_volume[d*cols*rows + row*cols + col]
+                    + a * cost_volume[d*cols*rows + (row+1)*cols + col];
+            }
+        }
+    }
 }
 
 // TODO this needs love
@@ -148,35 +236,11 @@ void DisparityPropagationStereo::preprocess() {
     }
 
     
+    
+    
     disparity_left = cv::Mat(left.rows, left.cols, CV_16SC1);
-
-    CLOCKS
-    cv::Mat min_costs = cv::Mat::ones(left.rows, left.cols, CV_32FC1) * FL_MAX;
-    for (int d = 0; d < max_disparity; d++) {
-        for (int row = 0; row < left.rows; row++) {
-            for (int col = 0; col < left.cols; col++) {
-                if (cost_volume[d*left.cols*left.rows + row*left.cols + col] < min_costs.at<float>(row, col)) {
-                    min_costs.at<float>(row, col) = cost_volume[d*left.cols*left.rows + row*left.cols + col];
-                    disparity_left.at<short>(row, col) = d;
-                }
-            }
-        }
-    }
-    // for (int row = 0; row < left.rows; row++) {
-    //     for (int col = 0; col < left.cols; col++) {
-    //         float minv = FL_MAX;
-    //         int cd = -1;
-    //         for (int d = 0; d < max_disparity; d++) {
-    //             if (cost_volume[d*left.cols*left.rows + row*left.cols + col] < minv) {
-    //                 minv = cost_volume[d*left.cols*left.rows + row*left.cols + col];
-    //                 cd = d;
-    //             }
-    //         }
-    //         // something is wrong when I use Mat#at, cannot figure out what
-    //         disparity_left.at<short>(row, col) = cd;
-    //     }
-    // }
-    CLOCKF
+    wta(disparity_left, cost_volume, max_disparity, left.rows, left.cols);
+    
 
     // cout << dx_left.size() << " " << left.size() << endl;    
     // disparity.convertTo(disparity, CV_8UC1m);
@@ -199,22 +263,8 @@ void DisparityPropagationStereo::preprocess() {
         cv::boxFilter(cost_slice, cost_slice, -1, cv::Size(5, 5));
     }
 
-    //TODO this can be done with extra memory to achieve cache locality
     disparity_right = cv::Mat(left.rows, left.cols, CV_16SC1);
-    for (int row = 0; row < left.rows; row++) {
-        for (int col = 0; col < left.cols; col++) {
-            float minv = 10000.0;
-            int cd = -1;
-            for (int d = 0; d < max_disparity; d++) {
-                if (cost_volume[d*left.cols*left.rows + row*left.cols + col] < minv) {
-                    minv = cost_volume[d*left.cols*left.rows + row*left.cols + col];
-                    cd = d;
-                }
-            }
-            // something is wrong when I use Mat#at, cannot figure out what
-            disparity_right.at<short>(row, col) = cd;
-        }
-    }
+    wta(disparity_right, cost_volume, max_disparity, left.rows, left.cols);
 
     // cout << dx_left.size() << " " << left.size() << endl;    
     // disparity_right.convertTo(disparity_right, CV_8UC1); 
@@ -223,20 +273,11 @@ void DisparityPropagationStereo::preprocess() {
     // cv::imshow("Scharr2", rvis);
 
     stable = lr_check(disparity_left, disparity_right);
-    // cv::imshow("Stable", stable);
 
-    // cv::waitKey(0);
-
+    // TODO add other deletes
     delete[] cost_volume;
-    // cout << "Exit" << endl;
 }
 
-static const float SIGMA_S = 42.5f / 6;
-static const float SIGMA_R = 22.5f / 6;
-
-float alpha(uchar p, uchar pl) {
-    return exp(-1/SIGMA_S - std::abs((int)p - pl) / SIGMA_R);
-}
 
 void DisparityPropagationStereo::disparity_propagation() {
     float *cost_volume = new float[max_disparity*left.rows*left.cols];
@@ -274,48 +315,10 @@ void DisparityPropagationStereo::disparity_propagation() {
         }
     }
 
-    for (int d = 0; d < max_disparity; d++) {
-        for (int row = 0; row < left.rows; row++) {
-            for (int col = 1; col < left.cols; col++) {
-                // cout << alpha(left.at<uchar>(row, col), left.at<uchar>(row, col-1)) << ' ';
-                cost_volume[d*left.cols*left.rows + row*left.cols + col] +=
-                    alpha(left.at<uchar>(row, col), left.at<uchar>(row, col-1))
-                    * cost_volume[d*left.cols*left.rows + row*left.cols + col - 1];
-            }
-        }
-    }
+    
 
-    for (int d = 0; d < max_disparity; d++) {
-        for (int row = 0; row < left.rows; row++) {
-            for (int col = left.cols-2; col >= 0; col--) {
-                float a = alpha(left.at<uchar>(row, col), left.at<uchar>(row, col+1));
-                cost_volume[d*left.cols*left.rows + row*left.cols + col] =
-                    (1 - a*a) * cost_volume[d*left.cols*left.rows + row*left.cols + col]
-                    + a * cost_volume[d*left.cols*left.rows + row*left.cols + col+1];
-            }
-        }
-    }
+    geodesic_filter(cost_volume, left, max_disparity);
 
-    for (int d = 0; d < max_disparity; d++) {
-        for (int col = 0; col < left.cols; col++) {
-            for (int row = 1; row < left.rows; row++) {
-                cost_volume[d*left.cols*left.rows + row*left.cols + col] +=
-                    alpha(left.at<uchar>(row, col), left.at<uchar>(row-1, col))
-                    * cost_volume[d*left.cols*left.rows + (row-1)*left.cols + col];
-            }
-        }
-    }
-
-    for (int d = 0; d < max_disparity; d++) {
-        for (int col = 0; col < left.cols; col++) {
-            for (int row = left.rows-2; row >= 0; row--) {
-                float a = alpha(left.at<uchar>(row, col), left.at<uchar>(row+1, col));
-                cost_volume[d*left.cols*left.rows + row*left.cols + col] =
-                    (1 - a*a) * cost_volume[d*left.cols*left.rows + row*left.cols + col]
-                    + a * cost_volume[d*left.cols*left.rows + (row+1)*left.cols + col];
-            }
-        }
-    }
 
     cv::Mat disparity_map = cv::Mat(left.rows, left.cols, CV_16SC1);
     for (int row = 0; row < left.rows; row++) {

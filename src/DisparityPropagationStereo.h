@@ -18,6 +18,11 @@ private:
     cv::Mat disparity;
 
 private:
+    // Winner-take-all
+    static void wta(cv::Mat &disparity, const float *cost_volume, int max_d, int rows, int cols);
+    // Left-right consistenct check
+    static cv::Mat lr_check(const cv::Mat &disparity_left, const cv::Mat &disparity_right);
+    static void geodesic_filter(float *cost_volume, const cv::Mat &img, int max_d);
     // Truncated Absolute Difference
     inline void tad( const cv::Mat &dx_left, 
                                             const cv::Mat &dx_right, float *cost, int row,
