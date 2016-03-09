@@ -23,6 +23,8 @@ using std::cerr;
 using std::endl;
 /************************/
 
+// Everything is short to speed up (cache locality)
+
 // Using this as max value for float, for some reason, numeric_limits worsens results
 static const float FL_MAX = 10000.0f;
 
@@ -31,23 +33,6 @@ static const float LC = 0.2f;
 static const short TRUNC_INT = 100;
 static const short TRUNC_GRAD = 100;
 
-inline void sub_shift_vectorize(const short *a, const short *b, float *c, int n, int d) {
-    for (int i = d; i < n; i++) {
-        c[i] = (float) (a[i] - b[i-d]);
-    }
-}
-
-inline void abs_shift_vectorize(float *c, int n, int d) {
-    for (int i = d; i < n; i++) {
-        c[i] = fabsf(c[i]);
-    }
-}
-
-inline void min_trunc_shift_vectorize(float *c, float t, int n, int d) {
-    for (int i = d; i < n; i++) {
-        c[i] = std::min<float>(c[i], t);
-    }
-}
 
 static const float SIGMA_S = 42.5f / 6;
 static const float SIGMA_R = 22.5f / 6;
@@ -56,12 +41,9 @@ static const float SIGMA_R = 22.5f / 6;
 DisparityPropagationStereo::DisparityPropagationStereo(int max_disparity) {
     su::require(max_disparity > 0, "Max disparity must be positive");
     this->max_disparity = max_disparity;
-
-    // Fill up the table of alpha values
-    
 }
 
-//TODO lambda to float
+//TODO statictize this function
 inline void DisparityPropagationStereo::tad(const cv::Mat &dx_left, 
                                             const cv::Mat &dx_right, float *cost, int row,
                                             int width, int d, float lambda) {
@@ -119,6 +101,41 @@ void DisparityPropagationStereo::wta(   cv::Mat &disparity, const float *cost_vo
     }
 }
 
+// Additional array is used to deal with cache locality and setup loops in proper ordering.
+// Construction of that array is about 1% of runtime of this function, not sure if it is
+// worth destroying the code more just to squeeze that out.
+// Reordering or reimplementing the min3 logic could help, but the compiler seems too smart.
+void DisparityPropagationStereo::min3_disparities(  short *min3_disps, const float *cost_volume,
+                                                    int max_d, int rows, int cols) {
+    float *aux_costs = new float[cols*rows*DC];
+    std::fill_n(aux_costs, cols*rows*DC, FL_MAX);
+    for (int d = 0; d < max_d; d++) {
+        for (int row = 0; row < rows; row++) {
+            for (int col = 0; col < cols; col++) {
+                float cost = cost_volume[d*cols*rows + row*cols + col];
+                int i = row*DC*cols + col*DC;
+                if (cost < aux_costs[i]) {
+                    aux_costs[i+2] = aux_costs[i+1];
+                    aux_costs[i+1] = aux_costs[i];
+                    aux_costs[i] = cost;
+                    min3_disps[i+2] = min3_disps[i+1];
+                    min3_disps[i+1] = min3_disps[i];
+                    min3_disps[i] = d;
+                } else if (cost < aux_costs[i+1]) {
+                    aux_costs[i+2] = aux_costs[i+1];
+                    aux_costs[i+1] = cost;
+                    min3_disps[i+2] = min3_disps[i+1];
+                    min3_disps[i+1] = d;
+                } else if (cost < aux_costs[i+2]) {
+                    aux_costs[i+2] = cost;
+                    min3_disps[i+2] = d;
+                }
+            }
+        }
+    }
+    delete[] aux_costs;
+}
+
 //TODO get rid of these global constants
 // Geodesic filter as explained in the paper
 void DisparityPropagationStereo::geodesic_filter(float *cost_volume, const cv::Mat &img, int max_d) {
@@ -158,6 +175,7 @@ void DisparityPropagationStereo::geodesic_filter(float *cost_volume, const cv::M
         }
     }
 
+//TODO maybe vectorize these 2 loops
     // Vertical top to bottom pass
     for (int d = 0; d < max_d; d++) {
         for (int row = 1; row < rows; row++) {
@@ -182,165 +200,110 @@ void DisparityPropagationStereo::geodesic_filter(float *cost_volume, const cv::M
     }
 }
 
+// Matching cost computation. Creates a table for penalty term R to make the calculations
+// faster. This still seems to be the slowest part of the code.
+void DisparityPropagationStereo::matching_cost( float *cost_volume, const short *min3_disps,
+                                                const cv::Mat &disparity, const cv::Mat &stable,
+                                                int max_d, int rows, int cols) {
+    // Lookup table for penalty term R    
+    float penalty[512];
+    for (int i = 0; i < 512; i++) {
+        penalty[i] = 2*LC;
+    }
+    penalty[256] = LC;
+    penalty[254] = LC;
+    penalty[255] = 0;
+
+    // Matching cost computation, same one from the paper
+    for (int d = 0; d < max_d; d++) {
+        for (int row = 0; row < rows; row++) {
+            for (int col = 0; col < cols; col++) {
+                if (stable.at<uchar>(row, col)) {
+                    short d1 = min3_disps[row*cols*DC + col*DC];
+                    short d2 = min3_disps[row*cols*DC + col*DC + 1];
+                    short d3 = min3_disps[row*cols*DC + col*DC + 2];
+                    
+                    float r = penalty[255+d1-d];
+                    r += penalty[255+d2-d];
+                    r += penalty[255+d3-d];
+
+                    int diff = (d - disparity.at<short>(row, col));
+                    cost_volume[d*cols*rows + row*cols + col] = diff * diff + r;
+                } else {
+                    cost_volume[d*cols*rows + row*cols + col] = 0;
+                }
+            }
+        }
+    }
+}
+
 // TODO this needs love
 void DisparityPropagationStereo::preprocess() {
+    // Edges (derivatives)
     cv::Mat dx_left, dx_right;
     cv::Scharr(left, dx_left, CV_16SC1, 1, 0);
     cv::Scharr(right, dx_right, CV_16SC1, 1, 0);
-    // cout << dx_left << endl;
 
     // Cost volume has (disparity, height, width) ordering so that it matches Mat and can be
     // used for box filtering
-    
     float *cost_volume = new float[max_disparity*left.cols*left.rows];
-    std::fill_n(cost_volume, max_disparity*left.cols*left.rows, FL_MAX);  // TODO
+    std::fill_n(cost_volume, max_disparity*left.cols*left.rows, FL_MAX);
 
+    // TAD matching cost computation and box filter aggregation for left image
     for (int d = 0; d < max_disparity; d++) {
         float *disparity_level = cost_volume + d*left.cols*left.rows;
-        // CLOCKS
         for (int row = 0; row < left.rows; row++) {
-            // TODO all this shit into a function
             tad(dx_left, dx_right, disparity_level + row*left.cols, row, left.cols, d, LAMBDA);
         }
         cv::Mat cost_slice = cv::Mat(left.rows, left.cols, CV_32FC1, disparity_level);
         cv::boxFilter(cost_slice, cost_slice, -1, cv::Size(5, 5));
     }
 
+    // TODO maybe move this at the top of disparity propagation
     min3_disps = new short[left.cols*left.rows*DC];
     std::fill_n(min3_disps, left.cols*left.rows*DC, -1);
-    // TODO maybe swap loops for cache locality    
-    // Also minimize the number of operations
-    for (int row = 0; row < left.rows; row++) {
-        for (int col = 0; col < left.cols; col++) {
-            float minv1 = 10000.0, minv2 = 10000.0, minv3 = 10000.0;
-            for (int d = 0; d < max_disparity; d++) {
-                float cost = cost_volume[d*left.cols*left.rows + row*left.cols + col];
-                if (cost < minv1) {
-                    minv3 = minv2;
-                    minv2 = minv1;
-                    minv1 = cost;
-                    min3_disps[row*DC*left.cols + col*DC + 2] = min3_disps[row*DC*left.cols + col*DC + 1];
-                    min3_disps[row*DC*left.cols + col*DC + 1] = min3_disps[row*DC*left.cols + col*DC];
-                    min3_disps[row*DC*left.cols + col*DC] = d;
-                } else if (cost < minv2) {
-                    minv3 = minv2;
-                    minv2 = cost;
-                    min3_disps[row*DC*left.cols + col*DC + 2] = min3_disps[row*DC*left.cols + col*DC + 1];
-                    min3_disps[row*DC*left.cols + col*DC + 1] = d;
-                } else if (cost < minv3) {
-                    minv3 = cost;
-                    min3_disps[row*DC*left.cols + col*DC + 2] = cost;
-                }
-            }
-        }
-    }
+    min3_disparities(min3_disps, cost_volume, max_disparity, left.rows, left.cols);
 
-    
-    
-    
+    // Left image disparity
     disparity_left = cv::Mat(left.rows, left.cols, CV_16SC1);
     wta(disparity_left, cost_volume, max_disparity, left.rows, left.cols);
     
 
-    // cout << dx_left.size() << " " << left.size() << endl;    
-    // disparity.convertTo(disparity, CV_8UC1m);
-    cv::Mat lvis;
-    su::convert_to_disparity_visualize(disparity_left, lvis, true);
-    // cv::imshow("Scharr", lvis);
-    // cv::waitKey(0);
-
-    std::fill_n(cost_volume, max_disparity*left.cols*left.rows, 100000.0);  // TODO
+    // TAD matching cost computation and box filter aggregation for right image
+    std::fill_n(cost_volume, max_disparity*left.cols*left.rows, FL_MAX);
     for (int d = 0; d < max_disparity; d++) {
         float *disparity_level = cost_volume + d*left.cols*left.rows;
         for (int row = 0; row < left.rows; row++) {
-            // TODO all this shit into a function
-            tad_r(    dx_left.ptr<short>(row), left.ptr<uchar>(row), dx_right.ptr<short>(row),
+            tad_r(  dx_left.ptr<short>(row), left.ptr<uchar>(row), dx_right.ptr<short>(row),
                     right.ptr<uchar>(row), disparity_level + row*left.cols, left.cols, d,
                     100, 100, LAMBDA);
         }
         cv::Mat cost_slice = cv::Mat(left.rows, left.cols, CV_32FC1, disparity_level);
-        // TODO might be faster if I implement it
         cv::boxFilter(cost_slice, cost_slice, -1, cv::Size(5, 5));
     }
 
+    // Right image disparity
     disparity_right = cv::Mat(left.rows, left.cols, CV_16SC1);
     wta(disparity_right, cost_volume, max_disparity, left.rows, left.cols);
 
-    // cout << dx_left.size() << " " << left.size() << endl;    
-    // disparity_right.convertTo(disparity_right, CV_8UC1); 
-    cv::Mat rvis;
-    su::convert_to_disparity_visualize(disparity_right, rvis);
-    // cv::imshow("Scharr2", rvis);
-
+    // Left right consistency check to find stable pixels
     stable = lr_check(disparity_left, disparity_right);
 
     // TODO add other deletes
     delete[] cost_volume;
 }
 
-
 void DisparityPropagationStereo::disparity_propagation() {
     float *cost_volume = new float[max_disparity*left.rows*left.cols];
-    for (int d = 0; d < max_disparity; d++) {
-        for (int row = 0; row < left.rows; row++) {
-            for (int col = 0; col < left.cols; col++) {
-                if (stable.at<uchar>(row, col)) {
-                    float r = 0;
-                    short d1 = min3_disps[row*left.cols*DC + col*DC];
-                    short d2 = min3_disps[row*left.cols*DC + col*DC + 1];
-                    short d3 = min3_disps[row*left.cols*DC + col*DC + 2];
-                    if (std::fabs(d1-d) > 1.0f) {
-                        r += 2*LC;
-                    } else {
-                        r += LC * std::fabs(d1-d) * std::fabs(d1-d);
-                    }
-                    if (std::fabs(d2-d) > 1.0f) {
-                        r += 2*LC;
-                    } else {
-                        r += LC * std::fabs(d2-d) * std::fabs(d2-d);
-                    }
-                    if (std::fabs(d3-d) > 1.0f) {
-                        r += 2*LC;
-                    } else {
-                        r += LC * std::fabs(d3-d) * std::fabs(d3-d);
-                    }
-                    cost_volume[d*left.cols*left.rows + row*left.cols + col] =
-                        (d - (int)disparity_left.at<short>(row, col))
-                        * (d - (int)disparity_left.at<short>(row, col))
-                        + r;
-                } else {
-                    cost_volume[d*left.cols*left.rows + row*left.cols + col] = 0;
-                }
-            }
-        }
-    }
-
-    
+    matching_cost(cost_volume, min3_disps, disparity_left, stable, max_disparity, left.rows, left.cols);
 
     geodesic_filter(cost_volume, left, max_disparity);
 
-
     cv::Mat disparity_map = cv::Mat(left.rows, left.cols, CV_16SC1);
-    for (int row = 0; row < left.rows; row++) {
-        for (int col = 0; col < left.cols; col++) {
-            float minv = 10000.0;
-            int cd = -1;
-            for (int d = 0; d < max_disparity; d++) {
-                if (cost_volume[d*left.cols*left.rows + row*left.cols + col] < minv) {
-                    minv = cost_volume[d*left.cols*left.rows + row*left.cols + col];
-                    cd = d;
-                }
-            }
-            // something is wrong when I use Mat#at, cannot figure out what
-            disparity_map.at<short>(row, col) = cd;
-        }
-    }
-    // cout << disparity_map << endl;
-    // su::print_mat<short>(disparity_map);
+    wta(disparity_map, cost_volume, max_disparity, left.rows, left.cols);
     disparity = disparity_map;
-    // su::convert_to_disparity_visualize(disparity_map, disparity_map, true);
-    // cv::imshow("Final disparity", disparity_map);
-    // cv::waitKey(0);
+    delete[] cost_volume;
+    delete[] min3_disps;        // TODO dont like this
 }
  
 cv::Mat DisparityPropagationStereo::compute_disparity(const cv::Mat &left, const cv::Mat &right) {
