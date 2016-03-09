@@ -14,8 +14,6 @@
 /**** JUST FOR DEBUGGING, WILL BE REMOVED ****/
 #define CLOCKS clock_t start = clock();
 #define CLOCKP std::cerr << (clock()-start) / float(CLOCKS_PER_SEC) << std::endl;
-#define CLOCKF std::cerr << (clock()-start) << std::endl;
-
 #define CPUS uint64_t start = su::rdtsc();
 #define CPUE std::cerr << su::rdtsc() - start << endl;
 using std::cout;
@@ -26,24 +24,41 @@ using std::endl;
 static const float LAMBDA = 0.5f;
 static const float LC = 0.2f;
 
-inline void sub_shift_vectorize(const short *a, const short *b, float *c, int n, int d) {
+inline void sub_shift_vectorize(const short *a, const short *b, short *c, int n, int d) {
     for (int i = d; i < n; i++) {
-        c[i] = (float) (a[i] - b[i-d]);
+        c[i] = a[i] - b[i-d];
     }
 }
 
-inline void abs_shift_vectorize(float *c, int n, int d) {
+inline void sub_shift_vectorize(const uchar *a, const uchar *b, short *c, int n, int d) {
     for (int i = d; i < n; i++) {
-        c[i] = fabsf(c[i]);
+        c[i] = (short)a[i] - b[i-d];
     }
 }
 
-inline void min_trunc_shift_vectorize(float *c, float t, int n, int d) {
+inline void abs_shift_vectorize(short *c, int n, int d) {
     for (int i = d; i < n; i++) {
-        c[i] = std::min<float>(c[i], t);
+        c[i] = std::abs(c[i]);
     }
 }
 
+inline void min_trunc_shift_vectorize(short *c, short t, int n, int d) {
+    for (int i = d; i < n; i++) {
+        c[i] = std::min<short>(c[i], t);
+    }
+}
+
+inline void mul_shift_vectorize(const short *a, float *c, float m, int n, int d) {
+    for (int i = d; i < n; i++) {
+        c[i] = m * a[i];
+    }
+}
+
+inline void add_aggr_shift_vectorize(const float *a, float *b, int n, int d) {
+    for (int i = d; i < n; i++) {
+        b[i] += a[i];
+    }
+}
 
 
 DisparityPropagationStereo::DisparityPropagationStereo(int max_disparity) {
@@ -54,18 +69,22 @@ DisparityPropagationStereo::DisparityPropagationStereo(int max_disparity) {
 //TODO lambda to float
 inline void DisparityPropagationStereo::tad(const short *dx_left, const uchar *left,
                                             const short *dx_right, const uchar *right, float *cost, 
-                                            int width, int d, int tg, uchar tc, double lambda) {
-    // TODO vectorize this
-    CPUS
-    // sub_shift_vectorize(dx_left, dx_right, cost, width, d);
-    // abs_shift_vectorize(cost, width, d);
-    
-    // min_trunc_shift_vectorize(cost, tg, width, d);
-    for (int col = d; col < width; col++) {
-        // cout << dx_left[col] << endl;
-        cost[col] = lambda * std::min<int>(std::abs((int)left[col] - right[col-d]), tc) +
-            (1 - lambda) * std::min<int>(std::abs(dx_left[col] - dx_right[col-d]), tg);
-    }
+                                            int width, int d, int tg, uchar tc, double lambda,
+                                            short *aux_cost_l, short *aux_cost_r, float* aux_cost_float) {
+    // CPUS
+    // Left image tad
+    sub_shift_vectorize(dx_left, dx_right, aux_cost_l, width, d);
+    abs_shift_vectorize(aux_cost_l, width, d);
+    min_trunc_shift_vectorize(aux_cost_l, tg, width, d);
+    mul_shift_vectorize(aux_cost_l, cost, 1-lambda, width, d);
+
+    // Right image tad
+    sub_shift_vectorize(left, right, aux_cost_r, width, d);
+    abs_shift_vectorize(aux_cost_r, width, d);
+    min_trunc_shift_vectorize(aux_cost_r, tc, width, d);
+    mul_shift_vectorize(aux_cost_r, aux_cost_float, lambda, width, d);
+
+    add_aggr_shift_vectorize(aux_cost_float, cost, width, d);
     // CPUE
 }
 
@@ -108,6 +127,9 @@ void DisparityPropagationStereo::preprocess() {
     // Cost volume has (disparity, height, width) ordering so that it matches Mat and can be
     // used for box filtering
     
+    aux_cost_l = new short[left.cols];
+    aux_cost_r = new short[left.cols];
+    aux_cost_float = new float[left.cols];
     float *cost_volume = new float[max_disparity*left.cols*left.rows];
     std::fill_n(cost_volume, max_disparity*left.cols*left.rows, 100000.0);  // TODO
     for (int d = 0; d < max_disparity; d++) {
@@ -116,7 +138,7 @@ void DisparityPropagationStereo::preprocess() {
             // TODO all this shit into a function
             tad(    dx_left.ptr<short>(row), left.ptr<uchar>(row), dx_right.ptr<short>(row),
                     right.ptr<uchar>(row), disparity_level + row*left.cols, left.cols, d,
-                    100, 100, LAMBDA);
+                    100, 100, LAMBDA, aux_cost_l, aux_cost_r, aux_cost_float);
         }
         cv::Mat cost_slice = cv::Mat(left.rows, left.cols, CV_32FC1, disparity_level);
         // TODO might be faster if I implement it
