@@ -14,6 +14,8 @@
 /**** JUST FOR DEBUGGING, WILL BE REMOVED ****/
 #define CLOCKS clock_t start = clock();
 #define CLOCKP std::cerr << (clock()-start) / float(CLOCKS_PER_SEC) << std::endl;
+#define CLOCKF std::cerr << (clock()-start) << std::endl;
+
 #define CPUS uint64_t start = su::rdtsc();
 #define CPUE std::cerr << su::rdtsc() - start << endl;
 using std::cout;
@@ -21,42 +23,29 @@ using std::cerr;
 using std::endl;
 /************************/
 
+// Using this as max value for float, for some reason, numeric_limits worsens results
+static const float FL_MAX = 10000.0f;
+
 static const float LAMBDA = 0.5f;
 static const float LC = 0.2f;
+static const short TRUNC_INT = 100;
+static const short TRUNC_GRAD = 100;
 
-inline void sub_shift_vectorize(const short *a, const short *b, short *c, int n, int d) {
+inline void sub_shift_vectorize(const short *a, const short *b, float *c, int n, int d) {
     for (int i = d; i < n; i++) {
-        c[i] = a[i] - b[i-d];
+        c[i] = (float) (a[i] - b[i-d]);
     }
 }
 
-inline void sub_shift_vectorize(const uchar *a, const uchar *b, short *c, int n, int d) {
+inline void abs_shift_vectorize(float *c, int n, int d) {
     for (int i = d; i < n; i++) {
-        c[i] = (short)a[i] - b[i-d];
+        c[i] = fabsf(c[i]);
     }
 }
 
-inline void abs_shift_vectorize(short *c, int n, int d) {
+inline void min_trunc_shift_vectorize(float *c, float t, int n, int d) {
     for (int i = d; i < n; i++) {
-        c[i] = std::abs(c[i]);
-    }
-}
-
-inline void min_trunc_shift_vectorize(short *c, short t, int n, int d) {
-    for (int i = d; i < n; i++) {
-        c[i] = std::min<short>(c[i], t);
-    }
-}
-
-inline void mul_shift_vectorize(const short *a, float *c, float m, int n, int d) {
-    for (int i = d; i < n; i++) {
-        c[i] = m * a[i];
-    }
-}
-
-inline void add_aggr_shift_vectorize(const float *a, float *b, int n, int d) {
-    for (int i = d; i < n; i++) {
-        b[i] += a[i];
+        c[i] = std::min<float>(c[i], t);
     }
 }
 
@@ -67,30 +56,21 @@ DisparityPropagationStereo::DisparityPropagationStereo(int max_disparity) {
 }
 
 //TODO lambda to float
-inline void DisparityPropagationStereo::tad(const short *dx_left, const uchar *left,
-                                            const short *dx_right, const uchar *right, float *cost, 
-                                            int width, int d, int tg, uchar tc, double lambda,
-                                            short *aux_cost_l, short *aux_cost_r, float* aux_cost_float) {
-    // CPUS
-    // Left image tad
-    sub_shift_vectorize(dx_left, dx_right, aux_cost_l, width, d);
-    abs_shift_vectorize(aux_cost_l, width, d);
-    min_trunc_shift_vectorize(aux_cost_l, tg, width, d);
-    mul_shift_vectorize(aux_cost_l, cost, 1-lambda, width, d);
-
-    // Right image tad
-    sub_shift_vectorize(left, right, aux_cost_r, width, d);
-    abs_shift_vectorize(aux_cost_r, width, d);
-    min_trunc_shift_vectorize(aux_cost_r, tc, width, d);
-    mul_shift_vectorize(aux_cost_r, aux_cost_float, lambda, width, d);
-
-    add_aggr_shift_vectorize(aux_cost_float, cost, width, d);
-    // CPUE
+inline void DisparityPropagationStereo::tad(const cv::Mat &dx_left, 
+                                            const cv::Mat &dx_right, float *cost, int row,
+                                            int width, int d, float lambda) {
+    for (int col = d; col < width; col++) {
+        short int_diff = std::abs((short)left.at<uchar>(row, col) - right.at<uchar>(row, col-d));
+        short c_intensity = std::min<short>(int_diff, TRUNC_INT);
+        short grad_diff = std::abs(dx_left.at<short>(row, col) - dx_right.at<short>(row, col-d));
+        short c_grad = std::min<short>(grad_diff, TRUNC_GRAD);
+        cost[col] = lambda * c_intensity + (1.0f - lambda) * c_grad;
+    }
 }
 
 inline void DisparityPropagationStereo::tad_r(  const short *dx_left, const uchar *left,
                                                 const short *dx_right, const uchar *right, float *cost, 
-                                            int width, int d, int tg, uchar tc, double lambda) {
+                                            int width, int d, short tg, short tc, float lambda) {
     // TODO vectorize this
     for (int col = 0; col < width-d; col++) {
         // cout << dx_left[col+d] - dx_right[col] << endl;
@@ -101,13 +81,10 @@ inline void DisparityPropagationStereo::tad_r(  const short *dx_left, const ucha
 
 cv::Mat lr_check(const cv::Mat &disparity_left, const cv::Mat &disparity_right) {
     cv::Mat stable = cv::Mat(disparity_left.rows, disparity_left.cols, CV_8UC1);
-    // cout << disparity_left.cols << endl;
     for (int row = 0; row < disparity_left.rows; row++) {
         for (int col = 0; col < disparity_left.cols; col++) {
             short d = disparity_left.at<short>(row, col);
-            // cout << d << ' ';
             if (col - (int)d < 0 || d != disparity_right.at<short>(row, col-d)) {
-                // cout << col - (int)d << endl;
                 stable.at<uchar>(row, col) = 0;
             } else {
                 stable.at<uchar>(row, col) = 255;
@@ -127,21 +104,17 @@ void DisparityPropagationStereo::preprocess() {
     // Cost volume has (disparity, height, width) ordering so that it matches Mat and can be
     // used for box filtering
     
-    aux_cost_l = new short[left.cols];
-    aux_cost_r = new short[left.cols];
-    aux_cost_float = new float[left.cols];
     float *cost_volume = new float[max_disparity*left.cols*left.rows];
-    std::fill_n(cost_volume, max_disparity*left.cols*left.rows, 100000.0);  // TODO
+    std::fill_n(cost_volume, max_disparity*left.cols*left.rows, FL_MAX);  // TODO
+
     for (int d = 0; d < max_disparity; d++) {
         float *disparity_level = cost_volume + d*left.cols*left.rows;
+        // CLOCKS
         for (int row = 0; row < left.rows; row++) {
             // TODO all this shit into a function
-            tad(    dx_left.ptr<short>(row), left.ptr<uchar>(row), dx_right.ptr<short>(row),
-                    right.ptr<uchar>(row), disparity_level + row*left.cols, left.cols, d,
-                    100, 100, LAMBDA, aux_cost_l, aux_cost_r, aux_cost_float);
+            tad(dx_left, dx_right, disparity_level + row*left.cols, row, left.cols, d, LAMBDA);
         }
         cv::Mat cost_slice = cv::Mat(left.rows, left.cols, CV_32FC1, disparity_level);
-        // TODO might be faster if I implement it
         cv::boxFilter(cost_slice, cost_slice, -1, cv::Size(5, 5));
     }
 
@@ -174,22 +147,36 @@ void DisparityPropagationStereo::preprocess() {
         }
     }
 
-    //TODO this can be done with extra memory to achieve cache locality
+    
     disparity_left = cv::Mat(left.rows, left.cols, CV_16SC1);
-    for (int row = 0; row < left.rows; row++) {
-        for (int col = 0; col < left.cols; col++) {
-            float minv = 10000.0;
-            int cd = -1;
-            for (int d = 0; d < max_disparity; d++) {
-                if (cost_volume[d*left.cols*left.rows + row*left.cols + col] < minv) {
-                    minv = cost_volume[d*left.cols*left.rows + row*left.cols + col];
-                    cd = d;
+
+    CLOCKS
+    cv::Mat min_costs = cv::Mat::ones(left.rows, left.cols, CV_32FC1) * FL_MAX;
+    for (int d = 0; d < max_disparity; d++) {
+        for (int row = 0; row < left.rows; row++) {
+            for (int col = 0; col < left.cols; col++) {
+                if (cost_volume[d*left.cols*left.rows + row*left.cols + col] < min_costs.at<float>(row, col)) {
+                    min_costs.at<float>(row, col) = cost_volume[d*left.cols*left.rows + row*left.cols + col];
+                    disparity_left.at<short>(row, col) = d;
                 }
             }
-            // something is wrong when I use Mat#at, cannot figure out what
-            disparity_left.at<short>(row, col) = cd;
         }
     }
+    // for (int row = 0; row < left.rows; row++) {
+    //     for (int col = 0; col < left.cols; col++) {
+    //         float minv = FL_MAX;
+    //         int cd = -1;
+    //         for (int d = 0; d < max_disparity; d++) {
+    //             if (cost_volume[d*left.cols*left.rows + row*left.cols + col] < minv) {
+    //                 minv = cost_volume[d*left.cols*left.rows + row*left.cols + col];
+    //                 cd = d;
+    //             }
+    //         }
+    //         // something is wrong when I use Mat#at, cannot figure out what
+    //         disparity_left.at<short>(row, col) = cd;
+    //     }
+    // }
+    CLOCKF
 
     // cout << dx_left.size() << " " << left.size() << endl;    
     // disparity.convertTo(disparity, CV_8UC1m);

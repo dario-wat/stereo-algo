@@ -9,8 +9,6 @@ private:
 
     // aux arrays
     short *min3_disps;
-    short *aux_cost_l, *aux_cost_r;
-    float *aux_cost_float;
 
     cv::Mat left, right;
     int height, width;
@@ -21,12 +19,12 @@ private:
 
 private:
     // Truncated Absolute Difference
-    static inline void tad( const short *dx_left, const uchar *left, const short *dx_right,
-                            const uchar *right, float *cost, int width, int d, int tg, uchar tc,
-                            double lambda, short* aux_cost_l, short *aux_cost_r, float* aux_cost_float);
+    inline void tad( const cv::Mat &dx_left, 
+                                            const cv::Mat &dx_right, float *cost, int row,
+                                            int width, int d, float lambda);
     static inline void tad_r( const short *dx_left, const uchar *left, const short *dx_right,
-                            const uchar *right, float *cost, int width, int d, int tg, uchar tc,
-                            double lambda);
+                            const uchar *right, float *cost, int width, int d, short tg, short tc,
+                            float lambda);
     void preprocess();
     void disparity_propagation();
 public:
