@@ -272,6 +272,9 @@ void DisparityPropagationStereo::disparity_propagation() {
 
     disparity = cv::Mat(left.rows, left.cols, CV_16SC1);
     wta(disparity, cost_volume, max_disparity, left.rows, left.cols);
+    cv::medianBlur(disparity, disparity, 5);
+    // cv::medianBlur(disparity, disparity, 5);
+    // cv::medianBlur(disparity, disparity, 5);
 }
  
 cv::Mat DisparityPropagationStereo::compute_disparity(const cv::Mat &left, const cv::Mat &right) {
