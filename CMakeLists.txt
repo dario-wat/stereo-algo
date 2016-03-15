@@ -17,9 +17,11 @@ include_directories(include)
 add_executable(algost
   src/main.cpp
   src/st_util.cpp
+  src/wta.cpp
   #src/FiveRegionStereo.cpp
-  src/DisparityPropagationStereo.cpp
-  src/IDRStereo.cpp
+  #src/DisparityPropagationStereo.cpp
+  #src/IDRStereo.cpp
+  src/SADBoxMedian.cpp
 )
 
 target_link_libraries(algost ${OpenCV_LIBS})
