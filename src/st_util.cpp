@@ -34,7 +34,7 @@ void su::print_mat(const cv::Mat &m) {
     }
 }
 
-// Explicits instantiation for su::print_mat
+// Explicit instantiation for su::print_mat
 template void su::print_mat<float>(const cv::Mat &m);
 template void su::print_mat<short>(const cv::Mat &m);
 

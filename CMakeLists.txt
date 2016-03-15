@@ -19,6 +19,7 @@ add_executable(algost
   src/st_util.cpp
   #src/FiveRegionStereo.cpp
   src/DisparityPropagationStereo.cpp
+  src/IDRStereo.cpp
 )
 
 target_link_libraries(algost ${OpenCV_LIBS})
