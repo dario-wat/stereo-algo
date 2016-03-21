@@ -41,9 +41,9 @@ int main(int argc, char **argv) {
     // cv::Mat disp = frs.compute_disparity(img_left_g, img_right_g);
     // DisparityPropagationStereo dps = DisparityPropagationStereo(max_disp, box_size, median_size);
     // cv::Mat disp = dps.compute_disparity(img_left_g, img_right_g);
-    FeatureLinkStereo fls = FeatureLinkStereo();
+    FeatureLinkStereo fls = FeatureLinkStereo(3);
     fls.compute_disparity(img_left_g, img_right_g);
-    
+
     // cv::Mat disp_vis;
     // su::convert_to_disparity_visualize(disp, disp_vis, true);
     // cv::imshow("Disparity", disp_vis);
