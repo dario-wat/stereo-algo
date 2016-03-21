@@ -21,7 +21,8 @@ add_executable(algost
   #src/FiveRegionStereo.cpp
   #src/DisparityPropagationStereo.cpp
   #src/IDRStereo.cpp
-  src/SADBoxMedian.cpp
+  #src/SADBoxMedian.cpp
+  src/FeatureLinkStereo.cpp
 )
 
 target_link_libraries(algost ${OpenCV_LIBS})
