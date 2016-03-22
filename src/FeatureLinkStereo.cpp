@@ -76,12 +76,17 @@ void feature_indices(int *indices, const std::vector<cv::KeyPoint> &kps, int hei
   }
 }
 
-FeatureLinkStereo::FeatureLinkStereo(int window_size) {
+FeatureLinkStereo::FeatureLinkStereo(int window_size, float init_guess_threshold, float threshold) {
   su::require(window_size > 0 && window_size % 2, "Window size must be odd and positive");
+  su::require(init_guess_threshold > 0.0f, "Threshold for inital guess mut be positive");
+  su::require(threshold > 0.0f, "Threshold for feature linl must be positive");
   this->window_size = window_size;
+  this->init_guess_threshold = init_guess_threshold;
+  this->threshold = threshold;
 }
 
-inline float mse(const cv::Mat &left, const cv::Mat &right, int xl, int yl, int xr, int yr, int n) {
+float FeatureLinkStereo::mse(const cv::Mat &left, const cv::Mat &right,
+                             int xl, int yl, int xr, int yr, int n) {
   int s = 0;
   for (int dy = -n/2; dy <= n/2; dy++) {
     for (int dx = -n/2; dx <= n/2; dx++) {
@@ -92,38 +97,43 @@ inline float mse(const cv::Mat &left, const cv::Mat &right, int xl, int yl, int 
   return static_cast<float>(s) / (n*n);
 }
 
+float FeatureLinkStereo::mse(const cv::Mat &left, const cv::Mat &right,
+                             const cv::KeyPoint &kpl, const cv::KeyPoint &kpr, int n) {
+  int xl = round(kpl.pt.x), yl = round(kpl.pt.y);
+  int xr = round(kpr.pt.x), yr = round(kpr.pt.y);
+  return mse(left, right, xl, yl, xr, yr, n);
+}
+
 void FeatureLinkStereo::initial_guess(const cv::Mat &left, const cv::Mat &right) {
   for (int row = 0; row < image_height; row++) {
     for (int i = right_indices[row]; i < right_indices[row+1]; i++) {
-      int xr = round(keypoints_right[i].pt.x);
-      int yr = round(keypoints_right[i].pt.y);
       for (int j = left_indices[row]; j < left_indices[row+1]; j++) {
-        int xl = round(keypoints_left[j].pt.x);
-        int yl = round(keypoints_left[j].pt.y);
-        float v = mse(left, right, xl, yl, xr, yr, window_size);
-        if (v < 5) {
-          init_left_matches.push_back(keypoints_left[j]);
-          init_right_matches.push_back(keypoints_right[i]);
+        float corr_val = mse(left, right, keypoints_left[j], keypoints_right[i], window_size);
+        // std::cout << v << std::endl;
+        if (corr_val < init_guess_threshold) {
+          init_left_matches.push_back(j);
+          init_right_matches.push_back(i);
           goto back_to_reality_goto_lol_I_am_actually_using_GOTO_look_at_me;
         }
-        std::cout << v << std::endl;
       }
     }
     back_to_reality_goto_lol_I_am_actually_using_GOTO_look_at_me:;
   }
 }
 
-// inline float FeatureLinkStereo::mse(  const cv::Mat &left, const cv::Mat &right,
-//                                       int x, int y, int d, int n) {
-//   int s = 0;
-//   for (int i = y - n/2; i < y + n/2; i++) {
-//     for (int j = x - n/2; j < x + n/2; j++) {
-//       int dist = right.at<uchar>(i, j) - left.at<uchar>(i, j+d);
-//       s += dist * dist;
-//     }
-//   }
-//   return static_cast<float>(s) / (n*n);
-// }
+void FeatureLinkStereo::feature_link(const cv::Mat &left, const cv::Mat &right, int row) {
+  int l_iter = init_left_matches[row], r_iter = init_right_matches[row];
+  int dist_l = 0, dist_r = 0;
+  while (l_iter < left_indices[row+1] || r_iter < right_indices[row+1]) {
+    float corr_val = mse(left, right, keypoints_left[l_iter], keypoints_right[r_iter], window_size);
+    if (corr_val > threshold) {
+      continue;
+    }
+
+    dist_l = std::abs(keypoints_left[l_iter].pt.x - keypoints_left[l_iter+1].pt.x);
+    dist_r = std::abs(keypoints_right[r_iter].pt.x - keypoints_right[r_iter+1].pt.x);
+  }
+}
 
 
 void FeatureLinkStereo::compute_disparity(const cv::Mat &left, const cv::Mat &right) {
@@ -140,9 +150,15 @@ void FeatureLinkStereo::compute_disparity(const cv::Mat &left, const cv::Mat &ri
 
   // Drawing stuff for debugging
   cv::Mat draw_left, draw_right, full_img;
-  draw_keypoints(draw_left, left, init_left_matches);
-  draw_keypoints(draw_right, right, init_right_matches);
-  draw_matches(full_img, left, right, init_left_matches, init_right_matches);
+  std::vector<cv::KeyPoint> init_left_kps(init_left_matches.size()), init_right_kps(init_left_matches.size());
+  std::transform( init_left_matches.begin(), init_left_matches.end(), init_left_kps.begin(),
+                  [this](int i) { return keypoints_left[i]; });
+  std::transform( init_right_matches.begin(), init_right_matches.end(), init_right_kps.begin(),
+                  [this](int i) { return keypoints_right[i]; });
+
+  draw_keypoints(draw_left, left, init_left_kps);
+  draw_keypoints(draw_right, right, init_right_kps);
+  draw_matches(full_img, left, right, init_left_kps, init_right_kps);
   
   std::cout << keypoints_left.size() << " " << keypoints_right.size() << std::endl;
   cv::imshow("Full", full_img);
