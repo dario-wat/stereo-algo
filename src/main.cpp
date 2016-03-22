@@ -31,9 +31,9 @@ int main(int argc, char **argv) {
     cv::Mat img_right_g;
     cv::cvtColor(cv::imread(argv[2]), img_right_g, CV_BGR2GRAY);
 
-    int max_disp = atoi(argv[3]);
-    int box_size = atoi(argv[4]);
-    int median_size = atoi(argv[5]);
+    // int max_disp = atoi(argv[3]);
+    // int box_size = atoi(argv[4]);
+    // int median_size = atoi(argv[5]);
 
     clock_t begin = clock();
     // SADBoxMedian idr = SADBoxMedian(max_disp, box_size, median_size);
@@ -44,7 +44,7 @@ int main(int argc, char **argv) {
     // cv::Mat disp = dps.compute_disparity(img_left_g, img_right_g);
     // FeatureLinkStereo fls = FeatureLinkStereo(3, 5.0, 10.0);
     // fls.compute_disparity(img_left_g, img_right_g);
-    DCBGridStereo dcb = DCBGridStereo();
+    DCBGridStereo dcb = DCBGridStereo(48);
     dcb.compute_disparity(img_left_g, img_right_g);
 
     // cv::Mat disp_vis;

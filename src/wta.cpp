@@ -2,11 +2,11 @@
 
 #include <opencv2/core/core.hpp>
 
-void su::wta(cv::Mat &disparity, float *cost_volume, int max_d, int rows, int cols) {
+void su::wta(cv::Mat &disparity, const float *cost_volume, int max_d, int rows, int cols) {
   if (disparity.cols != cols || disparity.rows != rows || disparity.type() != CV_32SC1) {
     disparity = cv::Mat(rows, cols, CV_32SC1);
   }
-  
+
   cv::Mat min_costs = cv::Mat::ones(rows, cols, CV_32FC1) * FL_MAX;
   for (int d = 0; d < max_d; d++) {
     for (int row = 0; row < rows; row++) {

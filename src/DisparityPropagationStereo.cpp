@@ -38,7 +38,7 @@ inline void DisparityPropagationStereo::tad(const short *dx_left, const uchar *l
 
 // Also using fabsf to vectorize
 inline void DisparityPropagationStereo::tad_r(  const short *dx_left, const uchar *left,
-                                                const short *dx_right, const uchar *right, float *cost, 
+                                                const short *dx_right, const uchar *right, float *cost,
                                                 int width, int d, short tg, short tc, float lambda) {
     for (int col = 0; col < width-d; col++) {
         cost[col] = lambda * std::min<int>(fabsf((int)left[col+d] - right[col]), tc)
