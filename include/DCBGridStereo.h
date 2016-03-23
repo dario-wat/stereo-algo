@@ -27,6 +27,7 @@ private:
 public:
   void tad_matching_cost();
   void create_dcb_grid();
+  void process_dcb_grid();
   void slice_dcb_grid();
 
   DCBGridStereo(int max_disparity);

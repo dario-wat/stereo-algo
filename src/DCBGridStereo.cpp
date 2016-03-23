@@ -42,6 +42,89 @@ void DCBGridStereo::create_dcb_grid() {
   }
 }
 
+inline int reflect(int M, int x) {
+  if (x < 0) {
+    return -x - 1;
+  }
+  if (x >= M) {
+    return 2*M - x - 1;
+  }
+  return x;
+}
+
+// YOLO
+void gaussian_smooth(float *data_4d, int d1, int d2, int d3, int d4) {
+  float *data_4d_cpy = new float[d1*d2*d3*d4];
+  memcpy(data_4d_cpy, data_4d, d1*d2*d3*d4*sizeof(float));
+  for (int i = 0; i < d1; i++) {
+    for (int j = 0; j < d2; j++) {
+      for (int k = 0; k < d3; k++) {
+        for (int l = 0; l < d4; l++) {
+          float sum = 0.0f;
+          for (int p = -2; p <= 2; p++) {
+            int i1 = reflect(d1, i-p);
+            sum += kernel[p+2] * data_4d_cpy[i1*d2*d3*d4 + j*d3*d4 + k*d4 + l];
+          }
+          data_4d[i*d2*d3*d4 + j*d3*d4 + k*d4 + l] = sum;
+        }
+      }
+    }
+  }
+
+  for (int i = 0; i < d1; i++) {
+    for (int j = 0; j < d2; j++) {
+      for (int k = 0; k < d3; k++) {
+        for (int l = 0; l < d4; l++) {
+          float sum = 0.0f;
+          for (int p = -2; p <= 2; p++) {
+            int j1 = reflect(d2, j-p);
+            sum += kernel[p+2] * data_4d_cpy[i*d2*d3*d4 + j1*d3*d4 + k*d4 + l];
+          }
+          data_4d[i*d2*d3*d4 + j*d3*d4 + k*d4 + l] = sum;
+        }
+      }
+    }
+  }
+
+  for (int i = 0; i < d1; i++) {
+    for (int j = 0; j < d2; j++) {
+      for (int k = 0; k < d3; k++) {
+        for (int l = 0; l < d4; l++) {
+          float sum = 0.0f;
+          for (int p = -2; p <= 2; p++) {
+            int k1 = reflect(d3, k-p);
+            sum += kernel[p+2] * data_4d_cpy[i*d2*d3*d4 + j*d3*d4 + k1*d4 + l];
+          }
+          data_4d[i*d2*d3*d4 + j*d3*d4 + k*d4 + l] = sum;
+        }
+      }
+    }
+  }
+
+  for (int i = 0; i < d1; i++) {
+    for (int j = 0; j < d2; j++) {
+      for (int k = 0; k < d3; k++) {
+        for (int l = 0; l < d4; l++) {
+          float sum = 0.0f;
+          for (int p = -2; p <= 2; p++) {
+            int l1 = reflect(d4, l-p);
+            sum += kernel[p+2] * data_4d_cpy[i*d2*d3*d4 + j*d3*d4 + k*d4 + l1];
+          }
+          data_4d[i*d2*d3*d4 + j*d3*d4 + k*d4 + l] = sum;
+        }
+      }
+    }
+  }
+
+  delete[] data_4d_cpy;
+}
+
+void DCBGridStereo::process_dcb_grid() {
+  for (int d = 0; d < max_disparity; d++) {
+    gaussian_smooth(dcb_grid + d*xdim*ydim*ldim*rdim, xdim, ydim, ldim, rdim);
+  }
+}
+
 void DCBGridStereo::slice_dcb_grid() {
   for (int d = 0; d < max_disparity; d++) {
     for (int row = 0; row < left.rows; row++) {
@@ -87,6 +170,7 @@ void DCBGridStereo::compute_disparity(const cv::Mat &left, const cv::Mat &right)
 
   tad_matching_cost();
   create_dcb_grid();
+  process_dcb_grid();
   slice_dcb_grid();
 
   cv::Mat disparity;
