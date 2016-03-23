@@ -9,11 +9,13 @@ private:
   static constexpr float SIGMA_R = 10.0f;
   static constexpr float THRESHOLD = 13.3f;
 
+  // Parameters
   int max_disparity;
   int sigma_s;
   int sigma_r;
   int threshold;
 
+  // aux stuff
   float *cost_volume;
   cv::Mat left;
   cv::Mat right;

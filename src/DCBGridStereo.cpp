@@ -8,7 +8,26 @@
 #include "st_util.h"
 #include "wta.h"
 
-float kernel[] = {0.06136, 0.24477, 0.38774, 0.24477, 0.06136};
+// float kernel[] = {0.06136, 0.24477, 0.38774, 0.24477, 0.06136};
+// float kernel[] = {0.2, 0.2, 0.2, 0.2, 0.2};
+
+int n4[16][4] = {
+    {0, 0, 0, 0},
+    {1, 0, 0, 0},
+    {0, 1, 0, 0},
+    {1, 1, 0, 0},
+    {0, 0, 1, 0},
+    {1, 0, 1, 0},
+    {0, 1, 1, 0},
+    {1, 1, 1, 0},
+    {0, 0, 0, 1},
+    {1, 0, 0, 1},
+    {0, 1, 0, 1},
+    {1, 1, 0, 1},
+    {0, 0, 1, 1},
+    {1, 0, 1, 1},
+    {0, 1, 1, 1},
+    {1, 1, 1, 1} };
 
 // Truncated absolute difference
 inline float tad(float pxl_l, float pxl_r, float threshold) {
@@ -42,6 +61,17 @@ void DCBGridStereo::create_dcb_grid() {
   }
 }
 
+void create_gaussian_kernel(float *kernel, int n, float sigma) {
+  float s = 0;
+  for (int i = -n/2; i <= n/2; i++) {
+    kernel[i+n/2] = exp(-i*i / (2*sigma*sigma));
+    s += kernel[i+n/2];
+  }
+  for (int i = 0; i < n; i++) {
+    kernel[i] /= s;
+  }
+}
+
 inline int reflect(int M, int x) {
   if (x < 0) {
     return -x - 1;
@@ -53,17 +83,20 @@ inline int reflect(int M, int x) {
 }
 
 // YOLO
-void gaussian_smooth(float *data_4d, int d1, int d2, int d3, int d4) {
+void gaussian_smooth(float *data_4d, int d1, int d2, int d3, int d4, int n, float sigma) {
   float *data_4d_cpy = new float[d1*d2*d3*d4];
   memcpy(data_4d_cpy, data_4d, d1*d2*d3*d4*sizeof(float));
+  float *kernel = new float[n];
+  create_gaussian_kernel(kernel, n, sigma);
+
   for (int i = 0; i < d1; i++) {
     for (int j = 0; j < d2; j++) {
       for (int k = 0; k < d3; k++) {
         for (int l = 0; l < d4; l++) {
           float sum = 0.0f;
-          for (int p = -2; p <= 2; p++) {
+          for (int p = -n/2; p <= n/2; p++) {
             int i1 = reflect(d1, i-p);
-            sum += kernel[p+2] * data_4d_cpy[i1*d2*d3*d4 + j*d3*d4 + k*d4 + l];
+            sum += kernel[p+n/2] * data_4d_cpy[i1*d2*d3*d4 + j*d3*d4 + k*d4 + l];
           }
           data_4d[i*d2*d3*d4 + j*d3*d4 + k*d4 + l] = sum;
         }
@@ -76,9 +109,9 @@ void gaussian_smooth(float *data_4d, int d1, int d2, int d3, int d4) {
       for (int k = 0; k < d3; k++) {
         for (int l = 0; l < d4; l++) {
           float sum = 0.0f;
-          for (int p = -2; p <= 2; p++) {
+          for (int p = -n/2; p <= n/2; p++) {
             int j1 = reflect(d2, j-p);
-            sum += kernel[p+2] * data_4d_cpy[i*d2*d3*d4 + j1*d3*d4 + k*d4 + l];
+            sum += kernel[p+n/2] * data_4d_cpy[i*d2*d3*d4 + j1*d3*d4 + k*d4 + l];
           }
           data_4d[i*d2*d3*d4 + j*d3*d4 + k*d4 + l] = sum;
         }
@@ -91,9 +124,9 @@ void gaussian_smooth(float *data_4d, int d1, int d2, int d3, int d4) {
       for (int k = 0; k < d3; k++) {
         for (int l = 0; l < d4; l++) {
           float sum = 0.0f;
-          for (int p = -2; p <= 2; p++) {
+          for (int p = -n/2; p <= n/2; p++) {
             int k1 = reflect(d3, k-p);
-            sum += kernel[p+2] * data_4d_cpy[i*d2*d3*d4 + j*d3*d4 + k1*d4 + l];
+            sum += kernel[p+n/2] * data_4d_cpy[i*d2*d3*d4 + j*d3*d4 + k1*d4 + l];
           }
           data_4d[i*d2*d3*d4 + j*d3*d4 + k*d4 + l] = sum;
         }
@@ -106,9 +139,9 @@ void gaussian_smooth(float *data_4d, int d1, int d2, int d3, int d4) {
       for (int k = 0; k < d3; k++) {
         for (int l = 0; l < d4; l++) {
           float sum = 0.0f;
-          for (int p = -2; p <= 2; p++) {
+          for (int p = -n/2; p <= n/2; p++) {
             int l1 = reflect(d4, l-p);
-            sum += kernel[p+2] * data_4d_cpy[i*d2*d3*d4 + j*d3*d4 + k*d4 + l1];
+            sum += kernel[p+n/2] * data_4d_cpy[i*d2*d3*d4 + j*d3*d4 + k*d4 + l1];
           }
           data_4d[i*d2*d3*d4 + j*d3*d4 + k*d4 + l] = sum;
         }
@@ -117,25 +150,97 @@ void gaussian_smooth(float *data_4d, int d1, int d2, int d3, int d4) {
   }
 
   delete[] data_4d_cpy;
+  delete[] kernel;
 }
 
 void DCBGridStereo::process_dcb_grid() {
   for (int d = 0; d < max_disparity; d++) {
-    gaussian_smooth(dcb_grid + d*xdim*ydim*ldim*rdim, xdim, ydim, ldim, rdim);
+    gaussian_smooth(dcb_grid + d*xdim*ydim*ldim*rdim, xdim, ydim, ldim, rdim, 5, 1.0);
   }
+}
+
+// Looks at these 4 functions, consistency is very important
+inline float interpolation_1d(float v1, float v2, float x) {
+  return v1 * (1-x)  + x * v2;
+}
+
+inline float interpolation_2d(float v[4], float x, float y) {
+  float s = interpolation_1d(v[0], v[1], x);
+  float t = interpolation_1d(v[2], v[3], x);
+  return interpolation_1d(s, t, y);
+}
+
+inline float interpolation_3d(float v[8], float x[3]) {
+  float s[4];
+  s[0] = interpolation_1d(v[0], v[1], x[0]);
+  s[1] = interpolation_1d(v[2], v[3], x[0]);
+  s[2] = interpolation_1d(v[4], v[5], x[0]);
+  s[3] = interpolation_1d(v[6], v[7], x[0]);
+  return interpolation_2d(s, x[1], x[2]);
+}
+
+inline float interpolation_4d(const float v[16], float x[4]) {
+  float s[8];
+  for (int i = 0; i < 8; i++) {
+    s[i] = interpolation_1d(v[2*i], v[2*i+1], x[0]);
+  }
+  float y[3] = { x[1], x[2], x[3]};
+  return interpolation_3d(s, y);
 }
 
 void DCBGridStereo::slice_dcb_grid() {
   for (int d = 0; d < max_disparity; d++) {
     for (int row = 0; row < left.rows; row++) {
       for (int col = 0; col < left.cols; col++) {
-        int y = round(col / sigma_s), x = round(row / sigma_s);
-        int pl = round(left.at<uchar>(row, col) / sigma_r);
-        int pr = round(right.at<uchar>(row, col-d) / sigma_r);
+        int x = row / sigma_s, y = col / sigma_s;
+        int pl = left.at<uchar>(row, col) / sigma_r, pr = right.at<uchar>(row, col-d) / sigma_r;
 
-        cost_volume[d*left.rows*left.cols + row*left.cols + col] =
-            dcb_grid[d*dref + x*xref + y*yref + pl*lref + pr]
-            / dcb_counts[d*dref + x*xref + y*yref + pl*lref + pr];
+        // if (x+1 >= xdim) {
+        //   // no x
+        // }
+
+        // float c[4] = {static_cast<float>(row) / sigma_s - x, static_cast<float>(col) / sigma_s - y,
+        //     static_cast<float>(left.at<uchar>(row, col)) / sigma_r - pl,
+        //     static_cast<float>(right.at<uchar>(row, col-d)) / sigma_r - pr};
+
+        // std::cout << c[0] << ' ' << c[1] << ' ' << c[2] << ' ' << c[3] << std::endl;
+
+        // if (floor(c[0]) >= xdim-1 || floor(c[1]) >= ydim-1 || floor(c[2]) >= ldim-1 || floor(c[]) >= rdim-1)
+        // std::cout << x << ' ' << y << ' ' << pl << ' ' << pr << std::endl;
+        // if (dcb_counts[d*dref + (x+0)*xref + (y+0)*yref + (pl+0)*lref + pr+0] == 0 ) 
+        //   std::cout << "What" << std::endl;
+        // Huh?
+        // float v[16] {
+        //     dcb_grid[d*dref + (x+0)*xref + (y+0)*yref + (pl+0)*lref + pr+0],// / dcb_counts[d*dref + (x+0)*xref + (y+0)*yref + (pl+0)*lref + pr+0],
+        //     dcb_grid[d*dref + (x+1)*xref + (y+0)*yref + (pl+0)*lref + pr+0],// / dcb_counts[d*dref + (x+1)*xref + (y+0)*yref + (pl+0)*lref + pr+0],
+        //     dcb_grid[d*dref + (x+0)*xref + (y+1)*yref + (pl+0)*lref + pr+0],// / dcb_counts[d*dref + (x+0)*xref + (y+1)*yref + (pl+0)*lref + pr+0],
+        //     dcb_grid[d*dref + (x+1)*xref + (y+1)*yref + (pl+0)*lref + pr+0],// / dcb_counts[d*dref + (x+1)*xref + (y+1)*yref + (pl+0)*lref + pr+0],
+        //     dcb_grid[d*dref + (x+0)*xref + (y+0)*yref + (pl+1)*lref + pr+0],// / dcb_counts[d*dref + (x+0)*xref + (y+0)*yref + (pl+1)*lref + pr+0],
+        //     dcb_grid[d*dref + (x+1)*xref + (y+0)*yref + (pl+1)*lref + pr+0],// / dcb_counts[d*dref + (x+1)*xref + (y+0)*yref + (pl+1)*lref + pr+0],
+        //     dcb_grid[d*dref + (x+0)*xref + (y+1)*yref + (pl+1)*lref + pr+0],// / dcb_counts[d*dref + (x+0)*xref + (y+1)*yref + (pl+1)*lref + pr+0],
+        //     dcb_grid[d*dref + (x+1)*xref + (y+1)*yref + (pl+1)*lref + pr+0],// / dcb_counts[d*dref + (x+1)*xref + (y+1)*yref + (pl+1)*lref + pr+0],
+        //     dcb_grid[d*dref + (x+0)*xref + (y+0)*yref + (pl+1)*lref + pr+1],// / dcb_counts[d*dref + (x+0)*xref + (y+0)*yref + (pl+1)*lref + pr+1],
+        //     dcb_grid[d*dref + (x+1)*xref + (y+0)*yref + (pl+0)*lref + pr+1],// / dcb_counts[d*dref + (x+1)*xref + (y+0)*yref + (pl+0)*lref + pr+1],
+        //     dcb_grid[d*dref + (x+0)*xref + (y+1)*yref + (pl+0)*lref + pr+1],// / dcb_counts[d*dref + (x+0)*xref + (y+1)*yref + (pl+0)*lref + pr+1],
+        //     dcb_grid[d*dref + (x+1)*xref + (y+1)*yref + (pl+1)*lref + pr+1],// / dcb_counts[d*dref + (x+1)*xref + (y+1)*yref + (pl+1)*lref + pr+1],
+        //     dcb_grid[d*dref + (x+0)*xref + (y+0)*yref + (pl+1)*lref + pr+1],// / dcb_counts[d*dref + (x+0)*xref + (y+0)*yref + (pl+1)*lref + pr+1],
+        //     dcb_grid[d*dref + (x+1)*xref + (y+0)*yref + (pl+1)*lref + pr+1],// / dcb_counts[d*dref + (x+1)*xref + (y+0)*yref + (pl+1)*lref + pr+1],
+        //     dcb_grid[d*dref + (x+0)*xref + (y+1)*yref + (pl+1)*lref + pr+1],// / dcb_counts[d*dref + (x+0)*xref + (y+1)*yref + (pl+1)*lref + pr+1],
+        //     dcb_grid[d*dref + (x+1)*xref + (y+1)*yref + (pl+1)*lref + pr+1]};// / dcb_counts[d*dref + (x+1)*xref + (y+1)*yref + (pl+1)*lref + pr+1] };
+
+        float c = 0, s = 0;
+        for (int i = 0; i < 16; i++) {
+          if (x+n4[i][0] >= xdim || y+n4[i][1] >= ydim || pl+n4[i][2] >= ldim || pr+n4[i][3] >= rdim) {
+            continue;
+          }
+          s += dcb_grid[d*dref + (x+n4[i][0])*xref + (y+n4[i][1])*yref + (pl+n4[i][2])*lref + pr+n4[i][3]];
+          c += dcb_counts[d*dref + (x+n4[i][0])*xref + (y+n4[i][1])*yref + (pl+n4[i][2])*lref + pr+n4[i][3]];
+        }
+
+        cost_volume[d*left.rows*left.cols + row*left.cols + col] = s/c;
+          //interpolation_4d(v, c);
+            // dcb_grid[d*dref + x*xref + y*yref + pl*lref + pr]
+            // / dcb_counts[d*dref + x*xref + y*yref + pl*lref + pr];
       }
     }
   }
@@ -165,6 +270,8 @@ void DCBGridStereo::compute_disparity(const cv::Mat &left, const cv::Mat &right)
   this->yref = ldim*rdim;
   this->lref = rdim;
 
+  std::cout << xdim << ' ' << ydim << ' ' << ldim << ' ' << rdim << std::endl;
+
   dcb_grid = new float[max_disparity*xdim*ydim*ldim*rdim] ();
   dcb_counts = new float[max_disparity*xdim*ydim*ldim*rdim] ();
 
@@ -177,7 +284,6 @@ void DCBGridStereo::compute_disparity(const cv::Mat &left, const cv::Mat &right)
   su::wta(disparity, cost_volume, max_disparity, left.rows, left.cols);
 
   su::convert_to_disparity_visualize(disparity, disparity, true);
-  // disparity.convertTo(disparity, CV_8UC1);
   cv::imshow("disp", disparity);
   cv::waitKey(0);
 
