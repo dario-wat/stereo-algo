@@ -27,7 +27,7 @@ int n4[16][4] = {
     {0, 0, 1, 1},
     {1, 0, 1, 1},
     {0, 1, 1, 1},
-    {1, 1, 1, 1} };
+    {1, 1, 1, 1}};
 
 // Truncated absolute difference
 inline float tad(float pxl_l, float pxl_r, float threshold) {
@@ -49,7 +49,8 @@ void DCBGridStereo::create_dcb_grid() {
   for (int d = 0; d < max_disparity; d++) {
     for (int row = 0; row < left.rows; row++) {
       for (int col = d; col < left.cols; col++) {
-        int y = round(col / sigma_s), x = round(row / sigma_s);
+        int y = round(col / sigma_s);
+        int x = round(row / sigma_s);
         int pl = round(left.at<uchar>(row, col) / sigma_r);
         int pr = round(right.at<uchar>(row, col-d) / sigma_r);
 
@@ -72,6 +73,7 @@ void create_gaussian_kernel(float *kernel, int n, float sigma) {
   }
 }
 
+// Reflect pixel if it goes outside of the image boundary
 inline int reflect(int M, int x) {
   if (x < 0) {
     return -x - 1;
@@ -83,6 +85,7 @@ inline int reflect(int M, int x) {
 }
 
 // YOLO
+// Gaussian smooth in 4d
 void gaussian_smooth(float *data_4d, int d1, int d2, int d3, int d4, int n, float sigma) {
   float *data_4d_cpy = new float[d1*d2*d3*d4];
   memcpy(data_4d_cpy, data_4d, d1*d2*d3*d4*sizeof(float));
@@ -155,7 +158,7 @@ void gaussian_smooth(float *data_4d, int d1, int d2, int d3, int d4, int n, floa
 
 void DCBGridStereo::process_dcb_grid() {
   for (int d = 0; d < max_disparity; d++) {
-    gaussian_smooth(dcb_grid + d*xdim*ydim*ldim*rdim, xdim, ydim, ldim, rdim, 5, 1.0);
+    gaussian_smooth(dcb_grid + d*xdim*ydim*ldim*rdim, xdim, ydim, ldim, rdim, SIZE, SIGMA);
   }
 }
 
@@ -188,6 +191,7 @@ inline float interpolation_4d(const float v[16], float x[4]) {
   return interpolation_3d(s, y);
 }
 
+// Taking the values out of the dcb grid and creating the final matching cost volume
 void DCBGridStereo::slice_dcb_grid() {
   for (int d = 0; d < max_disparity; d++) {
     for (int row = 0; row < left.rows; row++) {
@@ -195,63 +199,41 @@ void DCBGridStereo::slice_dcb_grid() {
         int x = row / sigma_s, y = col / sigma_s;
         int pl = left.at<uchar>(row, col) / sigma_r, pr = right.at<uchar>(row, col-d) / sigma_r;
 
-        // if (x+1 >= xdim) {
-        //   // no x
-        // }
+        float coord_diffs[4] = {
+            static_cast<float>(row) / sigma_s - x,
+            static_cast<float>(col) / sigma_s - y,
+            static_cast<float>(left.at<uchar>(row, col)) / sigma_r - pl,
+            static_cast<float>(right.at<uchar>(row, col-d)) / sigma_r - pr};
 
-        // float c[4] = {static_cast<float>(row) / sigma_s - x, static_cast<float>(col) / sigma_s - y,
-        //     static_cast<float>(left.at<uchar>(row, col)) / sigma_r - pl,
-        //     static_cast<float>(right.at<uchar>(row, col-d)) / sigma_r - pr};
-
-        // std::cout << c[0] << ' ' << c[1] << ' ' << c[2] << ' ' << c[3] << std::endl;
-
-        // if (floor(c[0]) >= xdim-1 || floor(c[1]) >= ydim-1 || floor(c[2]) >= ldim-1 || floor(c[]) >= rdim-1)
-        // std::cout << x << ' ' << y << ' ' << pl << ' ' << pr << std::endl;
-        // if (dcb_counts[d*dref + (x+0)*xref + (y+0)*yref + (pl+0)*lref + pr+0] == 0 ) 
-        //   std::cout << "What" << std::endl;
         // Huh?
-        // float v[16] {
-        //     dcb_grid[d*dref + (x+0)*xref + (y+0)*yref + (pl+0)*lref + pr+0],// / dcb_counts[d*dref + (x+0)*xref + (y+0)*yref + (pl+0)*lref + pr+0],
-        //     dcb_grid[d*dref + (x+1)*xref + (y+0)*yref + (pl+0)*lref + pr+0],// / dcb_counts[d*dref + (x+1)*xref + (y+0)*yref + (pl+0)*lref + pr+0],
-        //     dcb_grid[d*dref + (x+0)*xref + (y+1)*yref + (pl+0)*lref + pr+0],// / dcb_counts[d*dref + (x+0)*xref + (y+1)*yref + (pl+0)*lref + pr+0],
-        //     dcb_grid[d*dref + (x+1)*xref + (y+1)*yref + (pl+0)*lref + pr+0],// / dcb_counts[d*dref + (x+1)*xref + (y+1)*yref + (pl+0)*lref + pr+0],
-        //     dcb_grid[d*dref + (x+0)*xref + (y+0)*yref + (pl+1)*lref + pr+0],// / dcb_counts[d*dref + (x+0)*xref + (y+0)*yref + (pl+1)*lref + pr+0],
-        //     dcb_grid[d*dref + (x+1)*xref + (y+0)*yref + (pl+1)*lref + pr+0],// / dcb_counts[d*dref + (x+1)*xref + (y+0)*yref + (pl+1)*lref + pr+0],
-        //     dcb_grid[d*dref + (x+0)*xref + (y+1)*yref + (pl+1)*lref + pr+0],// / dcb_counts[d*dref + (x+0)*xref + (y+1)*yref + (pl+1)*lref + pr+0],
-        //     dcb_grid[d*dref + (x+1)*xref + (y+1)*yref + (pl+1)*lref + pr+0],// / dcb_counts[d*dref + (x+1)*xref + (y+1)*yref + (pl+1)*lref + pr+0],
-        //     dcb_grid[d*dref + (x+0)*xref + (y+0)*yref + (pl+1)*lref + pr+1],// / dcb_counts[d*dref + (x+0)*xref + (y+0)*yref + (pl+1)*lref + pr+1],
-        //     dcb_grid[d*dref + (x+1)*xref + (y+0)*yref + (pl+0)*lref + pr+1],// / dcb_counts[d*dref + (x+1)*xref + (y+0)*yref + (pl+0)*lref + pr+1],
-        //     dcb_grid[d*dref + (x+0)*xref + (y+1)*yref + (pl+0)*lref + pr+1],// / dcb_counts[d*dref + (x+0)*xref + (y+1)*yref + (pl+0)*lref + pr+1],
-        //     dcb_grid[d*dref + (x+1)*xref + (y+1)*yref + (pl+1)*lref + pr+1],// / dcb_counts[d*dref + (x+1)*xref + (y+1)*yref + (pl+1)*lref + pr+1],
-        //     dcb_grid[d*dref + (x+0)*xref + (y+0)*yref + (pl+1)*lref + pr+1],// / dcb_counts[d*dref + (x+0)*xref + (y+0)*yref + (pl+1)*lref + pr+1],
-        //     dcb_grid[d*dref + (x+1)*xref + (y+0)*yref + (pl+1)*lref + pr+1],// / dcb_counts[d*dref + (x+1)*xref + (y+0)*yref + (pl+1)*lref + pr+1],
-        //     dcb_grid[d*dref + (x+0)*xref + (y+1)*yref + (pl+1)*lref + pr+1],// / dcb_counts[d*dref + (x+0)*xref + (y+1)*yref + (pl+1)*lref + pr+1],
-        //     dcb_grid[d*dref + (x+1)*xref + (y+1)*yref + (pl+1)*lref + pr+1]};// / dcb_counts[d*dref + (x+1)*xref + (y+1)*yref + (pl+1)*lref + pr+1] };
-
-        float c = 0, s = 0;
+        float values[16], counts[16];
         for (int i = 0; i < 16; i++) {
-          if (x+n4[i][0] >= xdim || y+n4[i][1] >= ydim || pl+n4[i][2] >= ldim || pr+n4[i][3] >= rdim) {
-            continue;
-          }
-          s += dcb_grid[d*dref + (x+n4[i][0])*xref + (y+n4[i][1])*yref + (pl+n4[i][2])*lref + pr+n4[i][3]];
-          c += dcb_counts[d*dref + (x+n4[i][0])*xref + (y+n4[i][1])*yref + (pl+n4[i][2])*lref + pr+n4[i][3]];
+          // This complex if-else is so that it does index outside of the grid. If it does, it
+          // will be truncated to the lower value
+          int dx = x+n4[i][0] >= xdim ? 0 : n4[i][0];
+          int dy = y+n4[i][1] >= ydim ? 0 : n4[i][1];
+          int dl = pl+n4[i][2] >= ldim ? 0 : n4[i][2];
+          int dr = pr+n4[i][3] >= rdim ? 0 : n4[i][3];
+          values[i] = dcb_grid[d*dref + (x+dx)*xref + (y+dy)*yref + (pl+dl)*lref + pr+dr];
+          counts[i] = dcb_counts[d*dref + (x+dx)*xref + (y+dy)*yref + (pl+dl)*lref + pr+dr];
         }
 
-        cost_volume[d*left.rows*left.cols + row*left.cols + col] = s/c;
-          //interpolation_4d(v, c);
-            // dcb_grid[d*dref + x*xref + y*yref + pl*lref + pr]
-            // / dcb_counts[d*dref + x*xref + y*yref + pl*lref + pr];
+        cost_volume[d*left.rows*left.cols + row*left.cols + col] =
+            interpolation_4d(values, coord_diffs) / interpolation_4d(counts, coord_diffs);
       }
     }
   }
 }
 
-DCBGridStereo::DCBGridStereo(int max_disparity) {
+DCBGridStereo::DCBGridStereo(int max_disparity, float sigma_s, float sigma_r, float threshold) {
   su::require(max_disparity > 0, "Max disparity must be positive");
+  su::require(sigma_r >= 1, "SigmaR must be >= 1");
+  su::require(sigma_s >= 1, "SigmaS must be >= 1");
+  su::require(threshold > 0, "TAD threshold must be positive");
   this->max_disparity = max_disparity;
-  this->sigma_r = SIGMA_R;
-  this->sigma_s = SIGMA_S;
-  this->threshold = THRESHOLD;
+  this->sigma_r = sigma_r;
+  this->sigma_s = sigma_s;
+  this->threshold = sigma_r;
 }
 
 void DCBGridStereo::compute_disparity(const cv::Mat &left, const cv::Mat &right) {
@@ -270,7 +252,12 @@ void DCBGridStereo::compute_disparity(const cv::Mat &left, const cv::Mat &right)
   this->yref = ldim*rdim;
   this->lref = rdim;
 
-  std::cout << xdim << ' ' << ydim << ' ' << ldim << ' ' << rdim << std::endl;
+  std::cerr << "Dimensions: "
+      << max_disparity << " x " << xdim << " x " << ydim << " x " << ldim << " x " << rdim
+      << std::endl;
+  std::cerr << "Trying to allocate: "
+      << static_cast<float>(xdim)*ydim*ldim*rdim*max_disparity*2*sizeof(float)/1024/1204 << " MB"
+      << std::endl;
 
   dcb_grid = new float[max_disparity*xdim*ydim*ldim*rdim] ();
   dcb_counts = new float[max_disparity*xdim*ydim*ldim*rdim] ();
