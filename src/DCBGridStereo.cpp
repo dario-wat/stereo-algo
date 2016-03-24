@@ -5,6 +5,7 @@
 #include <iostream>
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
 #include "st_util.h"
 #include "wta.h"
 
@@ -162,7 +163,7 @@ void DCBGridStereo::process_dcb_grid() {
   }
 }
 
-// Looks at these 4 functions, consistency is very important
+// Look at these 4 functions, consistency is very important and there is none here!
 inline float interpolation_1d(float v1, float v2, float x) {
   return v1 * (1-x)  + x * v2;
 }
@@ -236,7 +237,7 @@ DCBGridStereo::DCBGridStereo(int max_disparity, float sigma_s, float sigma_r, fl
   this->threshold = sigma_r;
 }
 
-void DCBGridStereo::compute_disparity(const cv::Mat &left, const cv::Mat &right) {
+cv::Mat DCBGridStereo::compute_disparity(const cv::Mat &left, const cv::Mat &right) {
   su::require(left.cols == right.cols && left.rows == right.rows, "Image dimensions must match");
   su::require(left.type() == CV_8UC1 && right.type() == CV_8UC1, "Images must be grayscale");
   this->left = left;
@@ -269,12 +270,12 @@ void DCBGridStereo::compute_disparity(const cv::Mat &left, const cv::Mat &right)
 
   cv::Mat disparity;
   su::wta(disparity, cost_volume, max_disparity, left.rows, left.cols);
-
-  su::convert_to_disparity_visualize(disparity, disparity, true);
-  cv::imshow("disp", disparity);
-  cv::waitKey(0);
+  disparity.convertTo(disparity, CV_16SC1);
+  cv::medianBlur(disparity, disparity, 5);
 
   delete[] cost_volume;
   delete[] dcb_grid;
   delete[] dcb_counts;
+
+  return disparity;
 }

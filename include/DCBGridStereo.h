@@ -3,6 +3,12 @@
 
 #include <opencv2/core/core.hpp>
 
+// This is an implementation of "Real-time Spatiotemporal Stereo Matching
+// Using the Dual-Cross-Bilateral Grid" - Christian Richardt, et al.
+// This is a single threaded implementation of the DCB grid with some slight changes. There is
+// no 2S tiling mentioned in the paper, the interpolation is pure quadrilinear interpolation.
+// Works only on grayscale images. Might have some bugs that I am not aware of. The implementation
+// is not the best or nicest, could be improved and optimized.
 class DCBGridStereo {
 private:
   // Subsampling
@@ -40,7 +46,7 @@ public:
   void slice_dcb_grid();
 
   DCBGridStereo(int max_disparity, float sigma_s=SIGMA_S, float sigma_r=SIGMA_S, float threshold=THRESHOLD);
-  void compute_disparity(const cv::Mat &left, const cv::Mat &right);
+  cv::Mat compute_disparity(const cv::Mat &left, const cv::Mat &right);
 };
 
 #endif
