@@ -11,6 +11,7 @@
 #include "SADBoxMedian.h"
 #include "FeatureLinkStereo.h"
 #include "DCBGridStereo.h"
+#include "GuidedImageStereo.h"
 #include "st_util.h"
 
 using std::cout;
@@ -18,11 +19,11 @@ using std::endl;
 using std::cerr;
 
 int main(int argc, char **argv) {
-    if (argc != 6) {
-        cerr    << "Usage: ./program <left_image> <right_image> <max_disparity> <sigma_s> <sigma_r>"
-                << endl;
-        exit(1);
-    }
+    // if (argc != 6) {
+    //     cerr    << "Usage: ./program <left_image> <right_image> <max_disparity> <sigma_s> <sigma_r>"
+    //             << endl;
+    //     exit(1);
+    // }
 
     //TODO change this before proceeding
 
@@ -31,9 +32,9 @@ int main(int argc, char **argv) {
     cv::Mat img_right_g;
     cv::cvtColor(cv::imread(argv[2]), img_right_g, CV_BGR2GRAY);
 
-    int max_disp = atoi(argv[3]);
-    float sigma_s = atof(argv[4]);
-    float sigma_r = atof(argv[5]);
+    // int max_disp = atoi(argv[3]);
+    // float sigma_s = atof(argv[4]);
+    // float sigma_r = atof(argv[5]);
 
     clock_t begin = clock();
     // SADBoxMedian idr = SADBoxMedian(max_disp, box_size, median_size);
@@ -44,17 +45,19 @@ int main(int argc, char **argv) {
     // cv::Mat disp = dps.compute_disparity(img_left_g, img_right_g);
     // FeatureLinkStereo fls = FeatureLinkStereo(3, 5.0, 10.0);
     // fls.compute_disparity(img_left_g, img_right_g);
-    DCBGridStereo dcb = DCBGridStereo(max_disp, sigma_s, sigma_r);
-    cv::Mat disp = dcb.compute_disparity(img_left_g, img_right_g);
+    // DCBGridStereo dcb = DCBGridStereo(max_disp, sigma_s, sigma_r);
+    // cv::Mat disp = dcb.compute_disparity(img_left_g, img_right_g);
+    GuidedImageStereo gis = GuidedImageStereo();
+    gis.compute_disparity(img_left_g, img_right_g);
 
     cerr << "Full time: " << double(clock()-begin) / CLOCKS_PER_SEC << endl;
-    cerr << disp.rows << ' ' << disp.cols << ' ' << disp.channels() << endl;
+    // cerr << disp.rows << ' ' << disp.cols << ' ' << disp.channels() << endl;
     // cv::Mat disp_vis;
     // su::convert_to_disparity_visualize(disp, disp_vis, true);
     // cv::imshow("Disparity", disp_vis);
     // cv::waitKey(0);
 
-    disp.convertTo(disp, CV_16SC1);
-    su::print_mat<short>(disp);
+    // disp.convertTo(disp, CV_16SC1);
+    // su::print_mat<short>(disp);
     return 0;
 }

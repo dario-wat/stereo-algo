@@ -23,7 +23,8 @@ add_executable(algost
   #src/IDRStereo.cpp
   #src/SADBoxMedian.cpp
   #src/FeatureLinkStereo.cpp
-  src/DCBGridStereo.cpp
+  #src/DCBGridStereo.cpp
+  src/GuidedImageStereo.cpp
 )
 
 target_link_libraries(algost ${OpenCV_LIBS})
