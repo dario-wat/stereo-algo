@@ -47,7 +47,7 @@ int main(int argc, char **argv) {
     // fls.compute_disparity(img_left_g, img_right_g);
     // DCBGridStereo dcb = DCBGridStereo(max_disp, sigma_s, sigma_r);
     // cv::Mat disp = dcb.compute_disparity(img_left_g, img_right_g);
-    GuidedImageStereo gis = GuidedImageStereo();
+    GuidedImageStereo gis = GuidedImageStereo(15);
     gis.compute_disparity(img_left_g, img_right_g);
 
     cerr << "Full time: " << double(clock()-begin) / CLOCKS_PER_SEC << endl;
