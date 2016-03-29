@@ -7,13 +7,6 @@
 #include "st_util.h"
 #include "wta.h"
 
-/************ DEBUGGING STUFF **************/
-
-#include <opencv2/highgui/highgui.hpp>
-#include <iostream>
-
-/*******************************************/
-
 GuidedImageStereo::GuidedImageStereo(int max_disparity, float gamma_c, float gamma_p) {
   su::require(max_disparity > 0, "Max disparity must be positive");
   su::require(gamma_c > 0, "Gamma_c must be positive");
@@ -52,6 +45,10 @@ void GuidedImageStereo::gradient(const cv::Mat &src, cv::Mat &dst) {
 
 // Using TAD for cost matching
 void GuidedImageStereo::initial_cost_volume() {
+  cv::Mat dx_left, dx_right;
+  gradient(left, dx_left);
+  gradient(right, dx_right);
+
   // wrt left image
   for (int d = 0; d < max_disparity; d++) {
     for (int row = 0; row < rows; row++) {
@@ -109,6 +106,7 @@ void GuidedImageStereo::guided_cost_aggregation() {
   }
 }
 
+// left-right consistancy check. Invalidating pixels and returning them as bad
 void GuidedImageStereo::lr_check(cv::Mat &bad, const cv::Mat &disp_left, const cv::Mat &disp_right) {
   bad = cv::Mat::zeros(disp_left.rows, disp_left.cols, CV_8UC1);
   for (int row = 0; row < disp_left.rows; row++) {
@@ -121,6 +119,7 @@ void GuidedImageStereo::lr_check(cv::Mat &bad, const cv::Mat &disp_left, const c
   }
 }
 
+// Filling pixels invalidated by lr check using some streak-based filling
 void GuidedImageStereo::fill_invalidated(cv::Mat &disp, const cv::Mat &invalidated_mask, int max_d) {
   for (int row = 0; row < disp.rows; row++) {
     for (int col = 0; col < disp.cols; col++) {
@@ -166,7 +165,7 @@ void GuidedImageStereo::fill_invalidated(cv::Mat &disp, const cv::Mat &invalidat
   }
 }
 
-// Weighted median filter
+// Weighted median filter. Additionally correcting pixels that are invalidated in lr check.
 void GuidedImageStereo::wmf(const cv::Mat &disp, cv::Mat &disp_out, const cv::Mat &img,
                             const cv::Mat &mask, int window_size, int max_d,
                             float gamma_c, float gamma_p) {
@@ -181,6 +180,7 @@ void GuidedImageStereo::wmf(const cv::Mat &disp, cv::Mat &disp_out, const cv::Ma
       if (mask.at<uchar>(row, col) == 0) {
         continue;
       }
+
       std::fill_n(weights, max_d+1, 0);
       float sum = 0;
       for (int i = std::max(row-n, 0); i <= std::min(row+n, disp.rows-1); i++) {
@@ -228,21 +228,23 @@ cv::Mat GuidedImageStereo::compute_disparity(const cv::Mat &left, const cv::Mat 
   right.convertTo(this->right, CV_32FC1);
   this->right /= 255.0;
 
-  gradient(this->left, dx_left);
-  gradient(this->right, dx_right);
-
   cost_volume_l = new float[left.rows * left.cols * max_disparity] ();
   cost_volume_r = new float[left.rows * left.cols * max_disparity] ();
   std::fill_n(cost_volume_l, left.rows*left.cols*max_disparity, BORDER_THR);
   std::fill_n(cost_volume_r, left.rows*left.cols*max_disparity, BORDER_THR);
 
+  // 1. Matching cost computation
   initial_cost_volume();
+
+  // 2. Cost aggregation
   guided_cost_aggregation();
 
+  // 3. Optimization
   cv::Mat disparity_l, disparity_r;
   su::wta(disparity_l, cost_volume_l, max_disparity, rows, cols);
   su::wta(disparity_r, cost_volume_r, max_disparity, rows, cols);
 
+  // 4. Disparity refinement
   post_processing(disparity_l, disparity_r);
 
   delete[] cost_volume_l;

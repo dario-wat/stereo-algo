@@ -19,22 +19,20 @@ using std::endl;
 using std::cerr;
 
 int main(int argc, char **argv) {
-    // if (argc != 6) {
-    //     cerr    << "Usage: ./program <left_image> <right_image> <max_disparity> <sigma_s> <sigma_r>"
-    //             << endl;
-    //     exit(1);
-    // }
-
-    //TODO change this before proceeding
+    if (argc != 6) {
+        cerr    << "Usage: ./program <left_image> <right_image> <max_disparity> <gamma_c> <gamma_p>"
+                << endl;
+        exit(1);
+    }
 
     cv::Mat img_left_g;
     cv::cvtColor(cv::imread(argv[1]), img_left_g, CV_BGR2GRAY);
     cv::Mat img_right_g;
     cv::cvtColor(cv::imread(argv[2]), img_right_g, CV_BGR2GRAY);
 
-    // int max_disp = atoi(argv[3]);
-    // float sigma_s = atof(argv[4]);
-    // float sigma_r = atof(argv[5]);
+    int max_disp = atoi(argv[3]);
+    float gamma_c = atof(argv[4]);
+    float gamma_p = atof(argv[5]);
 
     clock_t begin = clock();
     // SADBoxMedian idr = SADBoxMedian(max_disp, box_size, median_size);
@@ -47,7 +45,7 @@ int main(int argc, char **argv) {
     // fls.compute_disparity(img_left_g, img_right_g);
     // DCBGridStereo dcb = DCBGridStereo(max_disp, sigma_s, sigma_r);
     // cv::Mat disp = dcb.compute_disparity(img_left_g, img_right_g);
-    GuidedImageStereo gis = GuidedImageStereo(48, 0.1, 9);
+    GuidedImageStereo gis = GuidedImageStereo(max_disp, gamma_c, gamma_p);
     cv::Mat disp = gis.compute_disparity(img_left_g, img_right_g);
 
     cerr << "Full time: " << double(clock()-begin) / CLOCKS_PER_SEC << endl;

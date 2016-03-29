@@ -3,6 +3,11 @@
 
 #include <opencv2/core/core.hpp>
 
+// This is an implementation of
+//    "Fast Cost-Volume Filtering for Visual Correspondence and Beyond" - Rhemann, et al.
+// It is implemented to work on grayscale images only. The parameters are exactly the same as
+// used in the MATLAB implementation provided by authors.
+// There might be some bugs that I am not aware of.
 class GuidedImageStereo {
 private:
   // Cost matching constants
@@ -33,7 +38,6 @@ private:
 
   // aux matrices
   cv::Mat left, right;
-  cv::Mat dx_left, dx_right;
 
 private:
   static void gradient(const cv::Mat &src, cv::Mat &dst);
