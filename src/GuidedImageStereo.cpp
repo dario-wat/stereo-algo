@@ -14,9 +14,13 @@
 
 /*******************************************/
 
-GuidedImageStereo::GuidedImageStereo(int max_disparity) {
+GuidedImageStereo::GuidedImageStereo(int max_disparity, float gamma_c, float gamma_p) {
   su::require(max_disparity > 0, "Max disparity must be positive");
+  su::require(gamma_c > 0, "Gamma_c must be positive");
+  su::require(gamma_p > 0, "Gamma_p must be positive");
   this->max_disparity= max_disparity;
+  this->gamma_c = gamma_c;
+  this->gamma_p = gamma_p;
 }
 
 // Central differences in x direction only
@@ -164,20 +168,26 @@ void GuidedImageStereo::fill_invalidated(cv::Mat &disp, const cv::Mat &invalidat
 
 // Weighted median filter
 void GuidedImageStereo::wmf(const cv::Mat &disp, cv::Mat &disp_out, const cv::Mat &img,
-                            int window_size, int max_d) {
+                            const cv::Mat &mask, int window_size, int max_d,
+                            float gamma_c, float gamma_p) {
   cv::Mat img_filt;
   cv::medianBlur(img, img_filt, 3);
   cv::Mat filtered = cv::Mat::zeros(disp.rows, disp.cols, CV_32SC1);
   int n = window_size / 2;
+  float *weights = new float[max_d+1];
+
   for (int row = 0; row < disp.rows; row++) {
     for (int col = 0; col < disp.cols; col++) {
-      float weights[max_d+1] = {0};
+      if (mask.at<uchar>(row, col) == 0) {
+        continue;
+      }
+      std::fill_n(weights, max_d+1, 0);
       float sum = 0;
       for (int i = std::max(row-n, 0); i <= std::min(row+n, disp.rows-1); i++) {
         for (int j = std::max(col-n, 0); j <= std::min(col+n, disp.cols-1); j++) {
           float sdiff = sqrt((row-i)*(row-i) + (col-j)*(col-j));
           float cdiff = fabsf(img_filt.at<uchar>(row, col) - img_filt.at<uchar>(i, j));
-          float weight = exp(- cdiff/(GAMMA_C*GAMMA_C) - sdiff/(GAMMA_P*GAMMA_P));
+          float weight = exp(- cdiff/(gamma_c*gamma_c) - sdiff/(gamma_p*gamma_p));
           weights[disp.at<int>(i, j)] += weight;
           sum += weight;
         }
@@ -193,14 +203,21 @@ void GuidedImageStereo::wmf(const cv::Mat &disp, cv::Mat &disp_out, const cv::Ma
       }
     }
   }
+  delete[] weights;
   disp_out = filtered;
 }
 
-void GuidedImageStereo::post_processing() {
+void GuidedImageStereo::post_processing(cv::Mat &disparity_l, const cv::Mat &disparity_r) {
+  cv::Mat invalidated;
+  lr_check(invalidated, disparity_l, disparity_r);
+  fill_invalidated(disparity_l, invalidated, max_disparity);
 
+  cv::Mat filt_disp;
+  wmf(disparity_l, filt_disp, left, invalidated, R_MEDIAN, max_disparity, gamma_c, gamma_p);
+  filt_disp.copyTo(disparity_l, invalidated);
 }
 
-void GuidedImageStereo::compute_disparity(const cv::Mat &left, const cv::Mat &right) {
+cv::Mat GuidedImageStereo::compute_disparity(const cv::Mat &left, const cv::Mat &right) {
   su::require(left.rows == right.rows && left.cols == right.cols, "Image dimension must match");
   su::require(left.type() == CV_8UC1 && right.type() == CV_8UC1, "Images must be grayscale");
   this->rows = left.rows;
@@ -226,32 +243,10 @@ void GuidedImageStereo::compute_disparity(const cv::Mat &left, const cv::Mat &ri
   su::wta(disparity_l, cost_volume_l, max_disparity, rows, cols);
   su::wta(disparity_r, cost_volume_r, max_disparity, rows, cols);
 
-
-  // TODO shoot this into postprocessing
-  cv::Mat disparity_l_cpy;
-  su::convert_to_disparity_visualize(disparity_l, disparity_l_cpy);
-  // cv::imshow("Left before", disparity_l_cpy);
-
-  cv::Mat bad;
-  lr_check(bad, disparity_l, disparity_r);
-  fill_invalidated(disparity_l, bad, max_disparity);
-
-  cv::Mat filt_disp;
-  wmf(disparity_l, filt_disp, left, R_MEDIAN, max_disparity);
-  cv::Mat disparity_l_cpy2;
-  su::convert_to_disparity_visualize(disparity_l, disparity_l_cpy2);
-  cv::imshow("Before filter", disparity_l_cpy2);
-  filt_disp.copyTo(disparity_l, bad);
-
-  // std::cout << disparity_l << std::endl;
-  // VISUALIZATION
-  su::convert_to_disparity_visualize(disparity_l, disparity_l);
-  su::convert_to_disparity_visualize(disparity_r, disparity_r);
-  su::convert_to_disparity_visualize(filt_disp, filt_disp);
-  cv::imshow("Left", disparity_l);
-  cv::imshow("Fully filtered", filt_disp);
-  cv::waitKey(0);
+  post_processing(disparity_l, disparity_r);
 
   delete[] cost_volume_l;
   delete[] cost_volume_r;
+
+  return disparity_l;
 }

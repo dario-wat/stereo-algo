@@ -12,7 +12,6 @@ private:
   static constexpr float GAMMA = 0.11;            // 1 - alpha_1
 
   // Post-processing constants
-  //TODO GAMMA_C might need a change
   static constexpr float GAMMA_C = 0.1;           // sigma_c
   static constexpr float GAMMA_P = 9;             // sigma_s
   static const int R_MEDIAN = 19;
@@ -21,7 +20,9 @@ private:
   static const int R = 9;
   static constexpr float EPS = 0.0001;
 
+  // parameters
   int max_disparity;
+  float gamma_c, gamma_p;
 
   // aux variables
   int cols, rows;
@@ -43,13 +44,13 @@ private:
 
   static void lr_check(cv::Mat &bad, const cv::Mat &disp_left, const cv::Mat &disp_right);
   static void fill_invalidated(cv::Mat &disp, const cv::Mat &invalidated_mask, int max_d);
-  static void wmf(const cv::Mat &disp, cv::Mat &disp_out, const cv::Mat &img,
-                  int window_size, int max_d);
-  void post_processing();
+  static void wmf(const cv::Mat &disp, cv::Mat &disp_out, const cv::Mat &img, const cv::Mat &mask,
+                  int window_size, int max_d, float gamma_c, float gamma_p);
+  void post_processing(cv::Mat &disparity_l, const cv::Mat &disparity_r);
 
 public:
-  GuidedImageStereo(int max_disparity);
-  void compute_disparity(const cv::Mat &left, const cv::Mat &right);
+  GuidedImageStereo(int max_disparity, float gamma_c=GAMMA_C, float gamma_p=GAMMA_P);
+  cv::Mat compute_disparity(const cv::Mat &left, const cv::Mat &right);
 };
 
 #endif
