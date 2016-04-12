@@ -1,6 +1,8 @@
 *.jpg
 *.pgm
 *.ppm
+*.bmp
+*.png
 *.gcda
 *.gcno
 *.gcov
