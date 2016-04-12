@@ -10,7 +10,7 @@
 
 
 SADBoxMedian::SADBoxMedian(int max_disparity, int box_size, int median_size) {
-  su::require(max_disparity > 0 && max_disparity < 256, "Max disparity must be > 0 and < 256");
+  // su::require(max_disparity > 0 && max_disparity < 256, "Max disparity must be > 0 and < 256");
   su::require(box_size > 0 && box_size % 2, "Box filter size must be positive odd");
   su::require(median_size > 0 && median_size % 2, "Median filter size must be positive odd");
   this->max_disparity = max_disparity;
@@ -45,10 +45,14 @@ cv::Mat SADBoxMedian::compute_disparity(const cv::Mat &left, const cv::Mat &righ
   // WTA optimization
   cv::Mat disparity;
   su::wta(disparity, cost_volume, max_disparity, rows, cols);
-  disparity.convertTo(disparity, CV_8UC1);
+
+  // TODO this is stupid, I should make my own median filter that works on integers, duh
+  disparity.convertTo(disparity, CV_32FC1);
 
   // Post-processing
   cv::medianBlur(disparity, disparity, median_size);
+
+  disparity.convertTo(disparity, CV_32SC1);
 
   delete[] cost_volume;
 
