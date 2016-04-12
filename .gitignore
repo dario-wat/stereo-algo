@@ -8,6 +8,7 @@
 *.gcov
 *.out
 *.cmake
+camera_params.txt
 CMakeFiles
 CMakeFiles.txt
 CMakeCache.txt

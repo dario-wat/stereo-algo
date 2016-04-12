@@ -54,6 +54,12 @@ void su::convert_to_disparity_visualize(const cv::Mat &source, cv::Mat &dest, bo
     su::convert_to_disparity_visualize(source, dest, minv, maxv, color);
 }
 
+void su::draw_horiz_lines(cv::Mat &img, int step, int thickness) {
+    for (int y = step; y < img.rows; y += step) {
+        cv::line(img, cv::Point2f(0, y), cv::Point2f(img.cols, y), cv::Scalar(0, 0, 255), thickness);
+    }
+}
+
 void su::print_mat_float(const cv::Mat &m) {
     for (int i = 0; i < m.rows; i++) {
         for (int j = 0; j < m.cols; j++) {

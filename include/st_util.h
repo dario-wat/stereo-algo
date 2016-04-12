@@ -12,6 +12,8 @@ namespace su {
     void convert_to_disparity_visualize(const cv::Mat &source, cv::Mat &dest,
                                         double minv, double maxv, bool color=false);
 
+    void draw_horiz_lines(cv::Mat &img, int step, int thickness);
+
     // Prints opencv Mat that contains floats with 1 decimal digit precision
     void print_mat_float(const cv::Mat &m);
 

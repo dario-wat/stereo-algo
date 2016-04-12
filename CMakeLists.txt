@@ -18,12 +18,13 @@ add_executable(algost
   src/main.cpp
   src/st_util.cpp
   src/wta.cpp
-  #src/FiveRegionStereo.cpp
-  #src/DisparityPropagationStereo.cpp
-  #src/IDRStereo.cpp
-  #src/SADBoxMedian.cpp
-  #src/FeatureLinkStereo.cpp
-  #src/DCBGridStereo.cpp
+  src/rectification.cpp
+  src/FiveRegionStereo.cpp
+  src/DisparityPropagationStereo.cpp
+  src/IDRStereo.cpp
+  src/SADBoxMedian.cpp
+  src/FeatureLinkStereo.cpp
+  src/DCBGridStereo.cpp
   src/GuidedImageStereo.cpp
 )
 
