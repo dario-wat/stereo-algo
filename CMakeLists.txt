@@ -11,6 +11,7 @@ project(algos)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -O3")
 
 find_package(OpenCV REQUIRED)
+find_package(Boost COMPONENTS filesystem system)
 
 include_directories(include)
 
@@ -28,4 +29,4 @@ add_executable(algost
   src/GuidedImageStereo.cpp
 )
 
-target_link_libraries(algost ${OpenCV_LIBS})
+target_link_libraries(algost ${OpenCV_LIBS} ${Boost_LIBRARIES})
