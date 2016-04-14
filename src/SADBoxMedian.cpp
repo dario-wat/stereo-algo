@@ -7,9 +7,6 @@
 #include "wta.h"
 #include "st_util.h"
 
-#define FL_MAX 10000.0f
-
-
 SADBoxMedian::SADBoxMedian( int min_disparity, int max_disparity, int rows, int cols,
                             int box_size, int median_size)
     : AbstractStereoAlgorithm(min_disparity, max_disparity, rows, cols) {
@@ -24,7 +21,7 @@ cv::Mat SADBoxMedian::compute_disparity(const cv::Mat &left, const cv::Mat &righ
   su::require(left.type() == CV_8UC1 && right.type() == CV_8UC1, "Images must be grayscale");
   su::require(left.cols == cols && left.rows == rows, "Images must fit the sizes given in the constructor");
 
-  std::fill_n(cost_volume, rows*cols*disparity_range, FL_MAX);
+  std::fill_n(cost_volume, rows*cols*disparity_range, FL_L);
 
   // SAD cost matching
   for (int d = min_disparity; d < max_disparity; d++) {

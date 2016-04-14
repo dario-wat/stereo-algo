@@ -97,20 +97,20 @@ int main(int argc, char **argv) {
     // cv::resize(img_left_g, img_left_g, cv::Size(), scale, scale);
     // cv::resize(img_right_g, img_right_g, cv::Size(), scale, scale);
 
-    // int min_d = 112;
-    // int max_d = 176;
-    // int rows = 512;
-    // int cols = 648;
+    int min_d = 112;
+    int max_d = 176;
+    int rows = 512;
+    int cols = 648;
 
     // int min_d = 120*4;
     // int max_d = 168*4;
     // int rows = 2048;
     // int cols = 2592;
 
-    int min_d = 56;
-    int max_d = 88;
-    int rows = 256;
-    int cols = 324;
+    // int min_d = 56;
+    // int max_d = 88;
+    // int rows = 256;
+    // int cols = 324;
 
     // int min_d = 0;
     // int max_d = 88;
@@ -128,6 +128,7 @@ int main(int argc, char **argv) {
     std::vector<int> counts(max_d-min_d, 0);
     cv::StereoSGBM sgbm(min_d, max_d-min_d, 15);
     SADBoxMedian idr = SADBoxMedian(min_d, max_d, rows, cols, 11, 3);
+    DCBGridStereo dcb = DCBGridStereo(min_d, max_d, rows, cols, 10, 10);
     for (int i = 1; i <= N; i++) {
         clock_t ibeg = clock();
         std::string idx = su::str(i);
@@ -136,9 +137,9 @@ int main(int argc, char **argv) {
         cv::Mat right = cv::imread( right_dir + "/right_0" + std::string(3-idx.size(), '0') + idx + ".pgm",
                                     CV_LOAD_IMAGE_GRAYSCALE);
 
-        cv::Mat disp = idr.compute_disparity(left, right);
-        // DCBGridStereo dcb = DCBGridStereo(max_d, 10, 10);
-        // cv::Mat disp = dcb.compute_disparity(left, right);
+        // cv::Mat disp = idr.compute_disparity(left, right);
+        
+        cv::Mat disp = dcb.compute_disparity(left, right);
 
         // GuidedImageStereo gis = GuidedImageStereo(174, 10, 10);
         // cv::Mat disp = gis.compute_disparity(left, right);
@@ -165,9 +166,9 @@ int main(int argc, char **argv) {
         cv::Mat disp_vis;
         su::convert_to_disparity_visualize(disp, disp_vis, min_d, max_d, true);
         // cerr << "time: " << double(clock()-ibeg) / CLOCKS_PER_SEC << endl;
-        cv::imshow("Disparity", disp_vis);
+        // cv::imshow("Disparity", disp_vis);
         // cv::imshow("Left", left);
-        // cv::imwrite("large_disp/disp_0" + std::string(3-idx.size(), '0') + idx + ".pgm", disp_vis);
+        cv::imwrite("large_disp/disp_0" + std::string(3-idx.size(), '0') + idx + ".pgm", disp_vis);
         cv::waitKey(1);
     }
     

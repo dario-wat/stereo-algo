@@ -5,6 +5,8 @@
 
 class AbstractStereoAlgorithm {
 protected:
+  static constexpr float FL_L = 10000.0f;
+
   int min_disparity;
   int max_disparity;
   int disparity_range;
