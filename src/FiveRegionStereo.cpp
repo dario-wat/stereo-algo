@@ -64,7 +64,7 @@ FiveRegionStereo::FiveRegionStereo( int min_disparity, int max_disparity, int ra
     this->region_width = radiusX*2 + 1;
     this->max_error = region_height * region_width * max_per_pixel_error * 3;
     this->invalid_disparity = max_disparity - min_disparity + 1;
-    
+
     // Aux arrays
     this->column_score = new int[max_disparity];
     this->element_score = NULL;
@@ -91,17 +91,13 @@ FiveRegionStereo::~FiveRegionStereo() {
 
 void FiveRegionStereo::configure(const cv::Mat &left, const cv::Mat &right) {
     int width = left.cols;
-    if (width == image_width) {
-        return;     // everything is already setup properly
-    }
-    
     su::require(left.cols == right.cols && left.rows == right.rows,
                 "The shape of the two given images does not match");
     su::require(left.channels() == 1 && right.channels() == 1, "Both images must have 1 channel");
     su::require(max_disparity <= width - 2*radiusX,
                 "The maximum disparity is too large for this image size: max size "
                     + su::str(width - 2*radiusX));
-    
+
     this->left = left;
     this->right = right;
     this->length_horizontal = width * (max_disparity - min_disparity);
@@ -116,7 +112,7 @@ void FiveRegionStereo::configure(const cv::Mat &left, const cv::Mat &right) {
         delete[] vertical_score;
     }
     this->vertical_score = new int[region_height*length_horizontal];
-    
+
     // Reinitialize arrays with different sizes
     if (element_score != NULL) {
         delete[] element_score;
@@ -169,13 +165,13 @@ void FiveRegionStereo::compute_score_row(int row, int *scores) {
 void FiveRegionStereo::compute_first_row() {
     int *first_row = vertical_score;
     active_vertical_score = 1;
-    
+
     // compute horizontal scores for first row block
     for (int row = 0; row < region_height; row++) {
         int *scores = horizontal_score + length_horizontal * (row);
         compute_score_row(row, scores);
     }
-    
+
     // compute score for the top possible row
     for (int i = 0; i < length_horizontal; i++) {
         int sum = 0;

@@ -21,7 +21,7 @@ private:
     int radiusX, radiusY;
     int max_error, validate_RtoL;
     double texture;
-    
+
     int invalid_disparity;
     int length_horizontal;
     int image_width;
