@@ -69,68 +69,130 @@ int main(int argc, char **argv) {
     //     exit(1);
     // }
 
-    cv::Mat img_left_g;
-    cv::cvtColor(cv::imread(argv[1]), img_left_g, CV_BGR2GRAY);
-    cv::Mat img_right_g;
-    cv::cvtColor(cv::imread(argv[2]), img_right_g, CV_BGR2GRAY);
+    // cv::Mat img_left_g;
+    // cv::cvtColor(cv::imread(argv[1]), img_left_g, CV_BGR2GRAY);
+    // cv::Mat img_right_g;
+    // cv::cvtColor(cv::imread(argv[2]), img_right_g, CV_BGR2GRAY);
 
-    cv::Mat map1_left, map2_left, map1_right, map2_right;
-    su::rectification_maps("camera_params.txt", map1_left, map2_left, map1_right, map2_right);
+    // cv::Mat map1_left, map2_left, map1_right, map2_right;
+    // su::rectification_maps("camera_params.txt", map1_left, map2_left, map1_right, map2_right);
 
-    cv::Mat cleft, cright;
-    cv::cvtColor(img_left_g, cleft, CV_GRAY2BGR);
-    cv::cvtColor(img_right_g, cright, CV_GRAY2BGR);
-    su::draw_horiz_lines(cleft, 50, 3);
-    su::draw_horiz_lines(cright, 50, 3);
+    // cv::Mat cleft, cright;
+    // cv::cvtColor(img_left_g, cleft, CV_GRAY2BGR);
+    // cv::cvtColor(img_right_g, cright, CV_GRAY2BGR);
+    // su::draw_horiz_lines(cleft, 50, 3);
+    // su::draw_horiz_lines(cright, 50, 3);
 
-    cv::remap(img_left_g, img_left_g, map1_left, map2_left, CV_INTER_LINEAR);
-    cv::remap(img_right_g, img_right_g, map1_right, map2_right, CV_INTER_LINEAR);
+    // cv::remap(img_left_g, img_left_g, map1_left, map2_left, CV_INTER_LINEAR);
+    // cv::remap(img_right_g, img_right_g, map1_right, map2_right, CV_INTER_LINEAR);
 
-    cv::remap(cleft, cleft, map1_left, map2_left, CV_INTER_LINEAR);
-    cv::remap(cright, cright, map1_right, map2_right, CV_INTER_LINEAR);
-    cv::resize(cleft, cleft, cv::Size(), 0.25, 0.25);
-    cv::resize(cright, cright, cv::Size(), 0.25, 0.25);
-    cv::imshow("cleft", cleft);
-    cv::imshow("cright", cright);
+    // cv::remap(cleft, cleft, map1_left, map2_left, CV_INTER_LINEAR);
+    // cv::remap(cright, cright, map1_right, map2_right, CV_INTER_LINEAR);
+    // cv::resize(cleft, cleft, cv::Size(), 0.25, 0.25);
+    // cv::resize(cright, cright, cv::Size(), 0.25, 0.25);
+    // cv::imshow("cleft", cleft);
+    // cv::imshow("cright", cright);
 
-    double scale = 0.25;
-    cv::resize(img_left_g, img_left_g, cv::Size(), scale, scale);
-    cv::resize(img_right_g, img_right_g, cv::Size(), scale, scale);
+    // double scale = 0.25;
+    // cv::resize(img_left_g, img_left_g, cv::Size(), scale, scale);
+    // cv::resize(img_right_g, img_right_g, cv::Size(), scale, scale);
+
+    // int min_d = 112;
+    // int max_d = 176;
+    // int rows = 512;
+    // int cols = 648;
+
+    // int min_d = 120*4;
+    // int max_d = 168*4;
+    // int rows = 2048;
+    // int cols = 2592;
+
+    int min_d = 56;
+    int max_d = 88;
+    int rows = 256;
+    int cols = 324;
+
+    // int min_d = 0;
+    // int max_d = 88;
 
     // int max_disp = atoi(argv[3]);
     // float gamma_c = atof(argv[4]);
     // float gamma_p = atof(argv[5]);
+    std::string left_dir = argv[1];
+    std::string right_dir = argv[2];
+
+    int N = 493;
 
     clock_t begin = clock();
-    SADBoxMedian idr = SADBoxMedian(400, 25, 5);
-    cv::Mat disp = idr.compute_disparity(img_left_g, img_right_g);
-    // FiveRegionStereo frs = FiveRegionStereo(0, 255, 3, 3, 25, 6, 0.0);
-    // cv::Mat disp = frs.compute_disparity(img_left_g, img_right_g);
+    
+    std::vector<int> counts(max_d-min_d, 0);
+    cv::StereoSGBM sgbm(min_d, max_d-min_d, 15);
+    SADBoxMedian idr = SADBoxMedian(min_d, max_d, rows, cols, 11, 3);
+    for (int i = 1; i <= N; i++) {
+        clock_t ibeg = clock();
+        std::string idx = su::str(i);
+        cv::Mat left = cv::imread(  left_dir + "/left_0" + std::string(3-idx.size(), '0') + idx + ".pgm",
+                                    CV_LOAD_IMAGE_GRAYSCALE);
+        cv::Mat right = cv::imread( right_dir + "/right_0" + std::string(3-idx.size(), '0') + idx + ".pgm",
+                                    CV_LOAD_IMAGE_GRAYSCALE);
+
+        cv::Mat disp = idr.compute_disparity(left, right);
+        // DCBGridStereo dcb = DCBGridStereo(max_d, 10, 10);
+        // cv::Mat disp = dcb.compute_disparity(left, right);
+
+        // GuidedImageStereo gis = GuidedImageStereo(174, 10, 10);
+        // cv::Mat disp = gis.compute_disparity(left, right);
+        // FiveRegionStereo frs = FiveRegionStereo(0, 170, 3, 3, 25, 6, 0.0);
+        // cv::Mat disp = frs.compute_disparity(left, right);
+
+        // cv::Mat disp;
+        // sgbm(left, right, disp);
+        // disp /= 16;
+        // disp += 1;
+
+        // cv::medianBlur(disp, disp, 5);
+
+        // std::cout << disp << std::endl;
+        
+        cerr << "time: " << double(clock()-ibeg) / CLOCKS_PER_SEC << endl;
+
+
+        // cv::Mat dispint;
+        // disp.convertTo(dispint, CV_32SC1);
+        // su::count_disparities(dispint, counts, min_d, max_d);
+        // su::print_counts(counts, min_d, max_d);
+
+        cv::Mat disp_vis;
+        su::convert_to_disparity_visualize(disp, disp_vis, min_d, max_d, true);
+        // cerr << "time: " << double(clock()-ibeg) / CLOCKS_PER_SEC << endl;
+        cv::imshow("Disparity", disp_vis);
+        // cv::imshow("Left", left);
+        // cv::imwrite("large_disp/disp_0" + std::string(3-idx.size(), '0') + idx + ".pgm", disp_vis);
+        cv::waitKey(1);
+    }
+    
+    
+    
+    
     // DisparityPropagationStereo dps = DisparityPropagationStereo(256, 1, 1);
     // cv::Mat disp = dps.compute_disparity(img_left_g, img_right_g);
     // FeatureLinkStereo fls = FeatureLinkStereo(3, 5.0, 10.0);
     // fls.compute_disparity(img_left_g, img_right_g);
-    // DCBGridStereo dcb = DCBGridStereo(256, 10, 10);
-    // cv::Mat disp = dcb.compute_disparity(img_left_g, img_right_g);
-    // GuidedImageStereo gis = GuidedImageStereo(256, 10, 10);
-    // cv::Mat disp = gis.compute_disparity(img_left_g, img_right_g);
+    
 
-    // cv::Mat disp;
-    // cv::StereoSGBM sgbm(0, 256, 21);
-    // sgbm(img_left_g, img_right_g, disp);
+  
 
     cerr << "Full time: " << double(clock()-begin) / CLOCKS_PER_SEC << endl;
 
-    cv::Mat disp_vis;
-    su::convert_to_disparity_visualize(disp, disp_vis, 30, 200, true);
+
     // cout << disp << endl;
     // disp.convertTo(disp_vis, CV_8UC1);
-    cv::imshow("Disparity", disp_vis);
+    
     // cv::imshow("Left", img_left_g);
     // cv::imshow("Right", img_right_g);
 
     // cv::imwrite("disp.png", disp_vis);
-    cv::waitKey(0);
+    
 
     // disp.convertTo(disp, CV_16SC1);
     // su::print_mat<int>(disp);

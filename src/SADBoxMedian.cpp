@@ -3,18 +3,18 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <algorithm>
+#include "AbstractStereoAlgorithm.h"
 #include "wta.h"
 #include "st_util.h"
 
 #define FL_MAX 10000.0f
 
 
-SADBoxMedian::SADBoxMedian(int min_disparity, int max_disparity, int box_size, int median_size) {
-  su::require(min_disparity < max_disparity, "Min disparity must be less than max disparity");
+SADBoxMedian::SADBoxMedian( int min_disparity, int max_disparity, int rows, int cols,
+                            int box_size, int median_size)
+    : AbstractStereoAlgorithm(min_disparity, max_disparity, rows, cols) {
   su::require(box_size > 0 && box_size % 2, "Box filter size must be positive odd");
   su::require(median_size > 0 && median_size % 2, "Median filter size must be positive odd");
-  this->min_disparity = min_disparity;
-  this->max_disparity = max_disparity;
   this->box_size = box_size;
   this->median_size = median_size;
 }
@@ -22,10 +22,8 @@ SADBoxMedian::SADBoxMedian(int min_disparity, int max_disparity, int box_size, i
 cv::Mat SADBoxMedian::compute_disparity(const cv::Mat &left, const cv::Mat &right) {
   su::require(left.cols == right.cols && left.rows == right.rows, "Image dimensions must match");
   su::require(left.type() == CV_8UC1 && right.type() == CV_8UC1, "Images must be grayscale");
+  su::require(left.cols == cols && left.rows == rows, "Images must fit the sizes given in the constructor");
 
-  int rows = left.rows, cols = left.cols;
-  int disparity_range = max_disparity - min_disparity;
-  float *cost_volume = new float[rows*cols*disparity_range];
   std::fill_n(cost_volume, rows*cols*disparity_range, FL_MAX);
 
   // SAD cost matching
@@ -52,8 +50,6 @@ cv::Mat SADBoxMedian::compute_disparity(const cv::Mat &left, const cv::Mat &righ
   disparity.convertTo(disparity, CV_16SC1);
   cv::medianBlur(disparity, disparity, median_size);
   disparity.convertTo(disparity, CV_32SC1);
-
-  delete[] cost_volume;
 
   return disparity;
 }
