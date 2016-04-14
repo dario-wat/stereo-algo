@@ -5,11 +5,12 @@
 
 class SADBoxMedian {
 private:
+  int min_disparity;
   int max_disparity;
   int box_size;
   int median_size;
 public:
-  SADBoxMedian(int max_disparity, int box_size, int median_size);
+  SADBoxMedian(int min_disparity, int max_disparity, int box_size, int median_size);
   cv::Mat compute_disparity(const cv::Mat &left, const cv::Mat &right);
 };
 

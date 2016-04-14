@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <cstdio>
 #include <iostream>
+#include <vector>
 #include <opencv2/core/core.hpp>
 #include <opencv2/contrib/contrib.hpp>
 
@@ -66,6 +67,24 @@ void su::print_mat_float(const cv::Mat &m) {
             printf("%.1f ", m.at<float>(i, j));
         }
         printf("\n");
+    }
+}
+
+void su::count_disparities(const cv::Mat &disparity, std::vector<int> &counts, int min_d, int max_d) {
+    if (counts.size() != max_d - min_d) {
+        counts = std::vector<int>(max_d - min_d, 0);
+    }
+    for (int row = 0; row < disparity.rows; row++) {
+        for (int col = 0; col < disparity.cols; col++) {
+            int d = disparity.at<int>(row, col);
+            counts[d-min_d]++;
+        }
+    }
+}
+
+void su::print_counts(const std::vector<int> &counts, int min_d, int max_d) {
+    for (int i = min_d; i < max_d; i++) {
+        printf("%4d %5d\n", i, counts[i-min_d]);
     }
 }
 
