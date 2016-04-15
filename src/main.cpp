@@ -97,20 +97,20 @@ int main(int argc, char **argv) {
     // cv::resize(img_left_g, img_left_g, cv::Size(), scale, scale);
     // cv::resize(img_right_g, img_right_g, cv::Size(), scale, scale);
 
-    int min_d = 112;
-    int max_d = 176;
-    int rows = 512;
-    int cols = 648;
+    // int min_d = 112;
+    // int max_d = 176;
+    // int rows = 512;
+    // int cols = 648;
 
-    // int min_d = 120*4;
-    // int max_d = 168*4;
+    // int min_d = 112*4;
+    // int max_d = 176*4;
     // int rows = 2048;
     // int cols = 2592;
 
-    // int min_d = 56;
-    // int max_d = 88;
-    // int rows = 256;
-    // int cols = 324;
+    int min_d = 56;
+    int max_d = 88;
+    int rows = 256;
+    int cols = 324;
 
     // int min_d = 0;
     // int max_d = 88;
@@ -125,10 +125,11 @@ int main(int argc, char **argv) {
 
     clock_t begin = clock();
     
-    std::vector<int> counts(max_d-min_d, 0);
-    cv::StereoSGBM sgbm(min_d, max_d-min_d, 15);
-    SADBoxMedian idr = SADBoxMedian(min_d, max_d, rows, cols, 11, 3);
-    DCBGridStereo dcb = DCBGridStereo(min_d, max_d, rows, cols, 10, 10);
+    // std::vector<int> counts(max_d-min_d, 0);
+    // cv::StereoSGBM sgbm(min_d, max_d-min_d, 15);
+    // SADBoxMedian idr = SADBoxMedian(min_d, max_d, rows, cols, 11, 5);
+    // DCBGridStereo dcb = DCBGridStereo(min_d, max_d, rows, cols, 40, 40);
+    GuidedImageStereo gis = GuidedImageStereo(min_d, max_d, rows, cols, 2, 2);
     for (int i = 1; i <= N; i++) {
         clock_t ibeg = clock();
         std::string idx = su::str(i);
@@ -138,11 +139,10 @@ int main(int argc, char **argv) {
                                     CV_LOAD_IMAGE_GRAYSCALE);
 
         // cv::Mat disp = idr.compute_disparity(left, right);
-        
-        cv::Mat disp = dcb.compute_disparity(left, right);
+        // cv::Mat disp = dcb.compute_disparity(left, right);
+        cv::Mat disp = gis.compute_disparity(left, right);
 
-        // GuidedImageStereo gis = GuidedImageStereo(174, 10, 10);
-        // cv::Mat disp = gis.compute_disparity(left, right);
+        
         // FiveRegionStereo frs = FiveRegionStereo(0, 170, 3, 3, 25, 6, 0.0);
         // cv::Mat disp = frs.compute_disparity(left, right);
 
@@ -155,7 +155,7 @@ int main(int argc, char **argv) {
 
         // std::cout << disp << std::endl;
         
-        cerr << "time: " << double(clock()-ibeg) / CLOCKS_PER_SEC << endl;
+        cerr << i << " time: " << double(clock()-ibeg) / CLOCKS_PER_SEC << endl;
 
 
         // cv::Mat dispint;
@@ -168,23 +168,16 @@ int main(int argc, char **argv) {
         // cerr << "time: " << double(clock()-ibeg) / CLOCKS_PER_SEC << endl;
         // cv::imshow("Disparity", disp_vis);
         // cv::imshow("Left", left);
-        cv::imwrite("large_disp/disp_0" + std::string(3-idx.size(), '0') + idx + ".pgm", disp_vis);
-        cv::waitKey(1);
+        cv::imwrite("dispmaps/disp_0" + std::string(3-idx.size(), '0') + idx + ".pgm", disp_vis);
+        // cv::waitKey(1);
     }
-    
-    
-    
     
     // DisparityPropagationStereo dps = DisparityPropagationStereo(256, 1, 1);
     // cv::Mat disp = dps.compute_disparity(img_left_g, img_right_g);
     // FeatureLinkStereo fls = FeatureLinkStereo(3, 5.0, 10.0);
     // fls.compute_disparity(img_left_g, img_right_g);
-    
-
-  
 
     cerr << "Full time: " << double(clock()-begin) / CLOCKS_PER_SEC << endl;
-
 
     // cout << disp << endl;
     // disp.convertTo(disp_vis, CV_8UC1);
@@ -193,7 +186,6 @@ int main(int argc, char **argv) {
     // cv::imshow("Right", img_right_g);
 
     // cv::imwrite("disp.png", disp_vis);
-    
 
     // disp.convertTo(disp, CV_16SC1);
     // su::print_mat<int>(disp);

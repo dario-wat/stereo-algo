@@ -2,13 +2,14 @@
 #define GUIDED_IMAGE_STEREO_H_
 
 #include <opencv2/core/core.hpp>
+#include "AbstractStereoAlgorithm.h"
 
 // This is an implementation of
 //    "Fast Cost-Volume Filtering for Visual Correspondence and Beyond" - Rhemann, et al.
 // It is implemented to work on grayscale images only. The parameters are exactly the same as
 // used in the MATLAB implementation provided by authors.
 // There might be some bugs that I am not aware of.
-class GuidedImageStereo {
+class GuidedImageStereo : public AbstractStereoAlgorithm {
 private:
   // Cost matching constants
   static constexpr float BORDER_THR = 3. / 255;
@@ -26,14 +27,10 @@ private:
   static constexpr float EPS = 0.0001;
 
   // parameters
-  int max_disparity;
   float gamma_c, gamma_p;
 
-  // aux variables
-  int cols, rows;
-
   // aux arrays
-  float *cost_volume_l;
+  float *cost_volume_l;   // This will be just a pointer to the base class aux array
   float *cost_volume_r;
 
   // aux matrices
@@ -49,11 +46,13 @@ private:
   static void lr_check(cv::Mat &bad, const cv::Mat &disp_left, const cv::Mat &disp_right);
   static void fill_invalidated(cv::Mat &disp, const cv::Mat &invalidated_mask, int max_d);
   static void wmf(const cv::Mat &disp, cv::Mat &disp_out, const cv::Mat &img, const cv::Mat &mask,
-                  int window_size, int max_d, float gamma_c, float gamma_p);
+                  int window_size, int min_d, int max_d, float gamma_c, float gamma_p);
   void post_processing(cv::Mat &disparity_l, const cv::Mat &disparity_r);
 
 public:
-  GuidedImageStereo(int max_disparity, float gamma_c=GAMMA_C, float gamma_p=GAMMA_P);
+  GuidedImageStereo(int min_disparity, int max_disparity, int rows, int cols,
+                    float gamma_c=GAMMA_C, float gamma_p=GAMMA_P);
+  ~GuidedImageStereo();
   cv::Mat compute_disparity(const cv::Mat &left, const cv::Mat &right);
 };
 

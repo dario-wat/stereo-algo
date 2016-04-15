@@ -4,16 +4,23 @@
 #include <algorithm>
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
+#include "AbstractStereoAlgorithm.h"
 #include "st_util.h"
 #include "wta.h"
 
-GuidedImageStereo::GuidedImageStereo(int max_disparity, float gamma_c, float gamma_p) {
-  su::require(max_disparity > 0, "Max disparity must be positive");
+GuidedImageStereo::GuidedImageStereo( int min_disparity, int max_disparity, int rows, int cols,
+                                      float gamma_c, float gamma_p)
+    : AbstractStereoAlgorithm(min_disparity, max_disparity, rows, cols) {
   su::require(gamma_c > 0, "Gamma_c must be positive");
   su::require(gamma_p > 0, "Gamma_p must be positive");
-  this->max_disparity= max_disparity;
   this->gamma_c = gamma_c;
   this->gamma_p = gamma_p;
+  this->cost_volume_r = new float[rows * cols * disparity_range];
+  this->cost_volume_l = cost_volume;
+}
+
+GuidedImageStereo::~GuidedImageStereo() {
+  delete[] cost_volume_r;
 }
 
 // Central differences in x direction only
@@ -50,23 +57,23 @@ void GuidedImageStereo::initial_cost_volume() {
   gradient(right, dx_right);
 
   // wrt left image
-  for (int d = 0; d < max_disparity; d++) {
+  for (int d = min_disparity; d < max_disparity; d++) {
     for (int row = 0; row < rows; row++) {
       for (int col = d; col < cols; col++) {
         float color = std::min(fabsf(left.at<float>(row, col) - right.at<float>(row, col-d)), COLOR_THR);
         float grad = std::min(fabsf(dx_left.at<float>(row, col) - dx_right.at<float>(row, col-d)), GRAD_THR);
-        cost_volume_l[d*cols*rows + row*cols + col] = GAMMA*color + (1-GAMMA)*grad;
+        cost_volume_l[(d-min_disparity)*cols*rows + row*cols + col] = GAMMA*color + (1-GAMMA)*grad;
       }
     }
   }
 
   // wrt right image
-  for (int d = 0; d < max_disparity; d++) {
+  for (int d = min_disparity; d < max_disparity; d++) {
     for (int row = 0; row < rows; row++) {
       for (int col = 0; col < cols-d; col++) {
         float color = std::min(fabsf(left.at<float>(row, col+d) - right.at<float>(row, col)), COLOR_THR);
         float grad = std::min(fabsf(dx_left.at<float>(row, col+d) - dx_right.at<float>(row, col)), GRAD_THR);
-        cost_volume_r[d*cols*rows + row*cols + col] = GAMMA*color + (1-GAMMA)*grad;
+        cost_volume_r[(d-min_disparity)*cols*rows + row*cols + col] = GAMMA*color + (1-GAMMA)*grad;
       }
     }
   }
@@ -96,12 +103,12 @@ void GuidedImageStereo::guided_filter(const cv::Mat &I, cv::Mat &p, int r) {
 }
 
 void GuidedImageStereo::guided_cost_aggregation() {
-  for (int d = 0; d < max_disparity; d++) {
+  for (int d = min_disparity; d < max_disparity; d++) {
     // This solution here is used so that the opencv implementation of the box filter can be used
     // to filter the cost volume. This works because Mat is internally just a pointer to data.
-    cv::Mat disp_plane_l = cv::Mat(rows, cols, CV_32FC1, cost_volume_l + d*rows*cols);
+    cv::Mat disp_plane_l = cv::Mat(rows, cols, CV_32FC1, cost_volume_l + (d-min_disparity)*rows*cols);
     guided_filter(left, disp_plane_l, R);
-    cv::Mat disp_plane_r = cv::Mat(rows, cols, CV_32FC1, cost_volume_r + d*rows*cols);
+    cv::Mat disp_plane_r = cv::Mat(rows, cols, CV_32FC1, cost_volume_r + (d-min_disparity)*rows*cols);
     guided_filter(right, disp_plane_r, R);
   }
 }
@@ -167,13 +174,13 @@ void GuidedImageStereo::fill_invalidated(cv::Mat &disp, const cv::Mat &invalidat
 
 // Weighted median filter. Additionally correcting pixels that are invalidated in lr check.
 void GuidedImageStereo::wmf(const cv::Mat &disp, cv::Mat &disp_out, const cv::Mat &img,
-                            const cv::Mat &mask, int window_size, int max_d,
+                            const cv::Mat &mask, int window_size, int min_d, int max_d,
                             float gamma_c, float gamma_p) {
   cv::Mat img_filt;
   cv::medianBlur(img, img_filt, 3);
   cv::Mat filtered = cv::Mat::zeros(disp.rows, disp.cols, CV_32SC1);
   int n = window_size / 2;
-  float *weights = new float[max_d+1];
+  float *weights = new float[max_d-min_d+1];
 
   for (int row = 0; row < disp.rows; row++) {
     for (int col = 0; col < disp.cols; col++) {
@@ -181,23 +188,23 @@ void GuidedImageStereo::wmf(const cv::Mat &disp, cv::Mat &disp_out, const cv::Ma
         continue;
       }
 
-      std::fill_n(weights, max_d+1, 0);
+      std::fill_n(weights, max_d-min_d+1, 0);
       float sum = 0;
       for (int i = std::max(row-n, 0); i <= std::min(row+n, disp.rows-1); i++) {
         for (int j = std::max(col-n, 0); j <= std::min(col+n, disp.cols-1); j++) {
           float sdiff = sqrt((row-i)*(row-i) + (col-j)*(col-j));
           float cdiff = fabsf(img_filt.at<uchar>(row, col) - img_filt.at<uchar>(i, j));
           float weight = exp(- cdiff/(gamma_c*gamma_c) - sdiff/(gamma_p*gamma_p));
-          weights[disp.at<int>(i, j)] += weight;
+          weights[disp.at<int>(i, j)-min_d] += weight;
           sum += weight;
         }
       }
 
       float cum_sum = 0;
-      for (int i = 0; i <= max_d; i++) {
+      for (int i = 0; i <= max_d-min_d; i++) {
         cum_sum += weights[i];
         if (cum_sum > sum/2) {
-          filtered.at<int>(row, col) = i;
+          filtered.at<int>(row, col) = i+min_d;
           break;
         }
       }
@@ -213,13 +220,14 @@ void GuidedImageStereo::post_processing(cv::Mat &disparity_l, const cv::Mat &dis
   fill_invalidated(disparity_l, invalidated, max_disparity);
 
   cv::Mat filt_disp;
-  wmf(disparity_l, filt_disp, left, invalidated, R_MEDIAN, max_disparity, gamma_c, gamma_p);
+  wmf(disparity_l, filt_disp, left, invalidated, R_MEDIAN, min_disparity, max_disparity, gamma_c, gamma_p);
   filt_disp.copyTo(disparity_l, invalidated);
 }
 
 cv::Mat GuidedImageStereo::compute_disparity(const cv::Mat &left, const cv::Mat &right) {
   su::require(left.rows == right.rows && left.cols == right.cols, "Image dimension must match");
   su::require(left.type() == CV_8UC1 && right.type() == CV_8UC1, "Images must be grayscale");
+  su::require(left.cols == cols && left.rows == rows, "Images must fit the sizes given in the constructor");
   this->rows = left.rows;
   this->cols = left.cols;
 
@@ -228,10 +236,8 @@ cv::Mat GuidedImageStereo::compute_disparity(const cv::Mat &left, const cv::Mat 
   right.convertTo(this->right, CV_32FC1);
   this->right /= 255.0;
 
-  cost_volume_l = new float[left.rows * left.cols * max_disparity] ();
-  cost_volume_r = new float[left.rows * left.cols * max_disparity] ();
-  std::fill_n(cost_volume_l, left.rows*left.cols*max_disparity, BORDER_THR);
-  std::fill_n(cost_volume_r, left.rows*left.cols*max_disparity, BORDER_THR);
+  std::fill_n(cost_volume_l, rows*cols*disparity_range, BORDER_THR);
+  std::fill_n(cost_volume_r, rows*cols*disparity_range, BORDER_THR);
 
   // 1. Matching cost computation
   initial_cost_volume();
@@ -241,14 +247,11 @@ cv::Mat GuidedImageStereo::compute_disparity(const cv::Mat &left, const cv::Mat 
 
   // 3. Optimization
   cv::Mat disparity_l, disparity_r;
-  su::wta(disparity_l, cost_volume_l, max_disparity, rows, cols);
-  su::wta(disparity_r, cost_volume_r, max_disparity, rows, cols);
+  su::wta(disparity_l, cost_volume_l, min_disparity, max_disparity, rows, cols);
+  su::wta(disparity_r, cost_volume_r, min_disparity, max_disparity, rows, cols);
 
   // 4. Disparity refinement
   post_processing(disparity_l, disparity_r);
-
-  delete[] cost_volume_l;
-  delete[] cost_volume_r;
 
   return disparity_l;
 }
