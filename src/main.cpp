@@ -66,6 +66,87 @@ void rectify(const std::string &left_dir, const std::string &right_dir) {
     }
 }
 
+void rectify_one(const std::string &left, const std::string &right) {
+    cv::Mat img_left_g;
+    cv::cvtColor(cv::imread(left), img_left_g, CV_BGR2GRAY);
+    cv::Mat img_right_g;
+    cv::cvtColor(cv::imread(right), img_right_g, CV_BGR2GRAY);
+
+    cv::Mat map1_left, map2_left, map1_right, map2_right;
+    su::rectification_maps("camera_params.txt", map1_left, map2_left, map1_right, map2_right);
+
+    cv::Mat cleft, cright;
+    cv::cvtColor(img_left_g, cleft, CV_GRAY2BGR);
+    cv::cvtColor(img_right_g, cright, CV_GRAY2BGR);
+
+    cv::remap(img_left_g, img_left_g, map1_left, map2_left, CV_INTER_LINEAR);
+    cv::remap(img_right_g, img_right_g, map1_right, map2_right, CV_INTER_LINEAR);
+
+    cv::Mat mapx = cv::Mat::zeros(cleft.rows, cleft.cols, CV_32FC1);
+    cv::Mat mapy = cv::Mat::zeros(cleft.rows, cleft.cols, CV_32FC1);
+
+    for (int i = 0; i < cleft.rows; i++) {
+        for (int j = 0; j < cleft.cols; j++) {
+            float x = map1_left.at<float>(i,j);
+            float y = map2_left.at<float>(i,j);
+            if (x >= 0 && y >= 0 && x < cleft.cols && y < cleft.rows) {
+                mapx.at<float>(y,x) = j;
+                mapy.at<float>(y,x) = i;
+            }
+        }
+    }
+
+    cv::Mat mapxr = cv::Mat::zeros(cleft.rows, cleft.cols, CV_32FC1);
+    cv::Mat mapyr = cv::Mat::zeros(cleft.rows, cleft.cols, CV_32FC1);
+    for (int i = 0; i < cleft.rows; i++) {
+        for (int j = 0; j < cleft.cols; j++) {
+            float x = map1_right.at<float>(i,j);
+            float y = map2_right.at<float>(i,j);
+            if (x >= 0 && y >= 0 && x < cleft.cols && y < cleft.rows) {
+                mapxr.at<float>(y,x) = j;
+                mapyr.at<float>(y,x) = i;
+            }
+        }
+    }
+
+    cv::Scalar color = cv::Scalar(0, 0, 255);
+
+    cv::remap(cleft, cleft, map1_left, map2_left, CV_INTER_LINEAR);
+    cv::remap(cright, cright, map1_right, map2_right, CV_INTER_LINEAR);
+    su::draw_horiz_lines(cleft, 200, 12, color);
+    su::draw_horiz_lines(cright, 200, 12, color);
+
+    cv::Mat combined1 = cv::Mat::zeros(cleft.rows, cleft.cols + cright.cols + 40, CV_8UC3);
+    combined1 = cv::Scalar(255, 255, 255);
+    cleft.copyTo(combined1(cv::Rect(0, 0, cleft.cols, cleft.rows)));
+    cright.copyTo(combined1(cv::Rect(cleft.cols+40, 0, cleft.cols, cleft.rows)));
+    su::draw_horiz_lines(combined1, 200, 12, color);
+
+    cv::Mat combined = cv::Mat::zeros(cleft.rows + cleft.rows + 80, cleft.cols + cright.cols + 40, CV_8UC3);
+    combined = cv::Scalar(255, 255, 255);
+    combined1.copyTo(combined(cv::Rect(0, cleft.rows+80, cleft.cols + cleft.cols + 40, cleft.rows)));    
+
+    cv::Mat inverted, invertedr;
+    cv::remap(cleft, inverted, mapx, mapy, CV_INTER_LINEAR);
+    cv::remap(cright, invertedr, mapxr, mapyr, CV_INTER_LINEAR);
+
+    inverted.copyTo(combined(cv::Rect(0, 0, cleft.cols, cleft.rows)));
+    invertedr.copyTo(combined(cv::Rect(cleft.cols+40, 0, cleft.cols, cleft.rows)));
+
+    cv::resize(inverted, inverted, cv::Size(), 0.25, 0.25);
+    cv::resize(invertedr, invertedr, cv::Size(), 0.25, 0.25);
+
+    cv::resize(cleft, cleft, cv::Size(), 0.25, 0.25);
+    cv::resize(cright, cright, cv::Size(), 0.25, 0.25);
+    cv::resize(combined, combined, cv::Size(), 0.25, 0.25);
+
+    cv::imwrite("combined.png", combined);
+    // cv::imshow("combined", combined);
+    // cv::imwrite("invleft.png", inverted);
+    // cv::imwrite("invright.png", invertedr);
+    // cv::waitKey(0);
+}
+
 void stream_eval(const std::string &left_dir, const std::string &right_dir) {
     const int N = 493;
     int min_d =  56, max_d =  88, rows =  256, cols =  324;         // Small images
@@ -113,6 +194,25 @@ void stream_eval(const std::string &left_dir, const std::string &right_dir) {
     cerr << "Full time: " << double(clock()-begin) / CLOCKS_PER_SEC << endl;
 }
 
+void eval_one(const std::string &left_f, const std::string &right_f, int min_d, int max_d) {
+    cv::Mat left = cv::imread(left_f, CV_LOAD_IMAGE_GRAYSCALE);
+    cv::Mat right = cv::imread(right_f, CV_LOAD_IMAGE_GRAYSCALE);
+
+    cv::StereoSGBM sgbm(min_d, max_d-min_d, 21);
+    SADBoxMedian sbm = SADBoxMedian(min_d, max_d, left.rows, left.cols, 21, 5);
+    DCBGridStereo dcb = DCBGridStereo(min_d, max_d, left.rows, left.cols, 10, 10);
+    cv::Mat disp = dcb.compute_disparity(left, right);
+    // sgbm(left, right, disp);
+    // disp /= 16;
+    // disp += 1;
+    // cout << disp << endl;
+    // disp.convertTo(disp, CV_8UC1);
+    cv::Mat disp_vis;
+    su::convert_to_disparity_visualize(disp, disp_vis, min_d, max_d, true);
+    cv::imshow("Disparity", disp_vis);
+    cv::waitKey(0);
+}
+
 int main(int argc, char **argv) {
     // if (argc != 6) {
     //     cerr    << "Usage: ./program <left_image> <right_image> <max_disparity> <gamma_c> <gamma_p>"
@@ -120,37 +220,14 @@ int main(int argc, char **argv) {
     //     exit(1);
     // }
 
-    // cv::Mat img_left_g;
-    // cv::cvtColor(cv::imread(argv[1]), img_left_g, CV_BGR2GRAY);
-    // cv::Mat img_right_g;
-    // cv::cvtColor(cv::imread(argv[2]), img_right_g, CV_BGR2GRAY);
-
-    // cv::Mat map1_left, map2_left, map1_right, map2_right;
-    // su::rectification_maps("camera_params.txt", map1_left, map2_left, map1_right, map2_right);
-
-    // cv::Mat cleft, cright;
-    // cv::cvtColor(img_left_g, cleft, CV_GRAY2BGR);
-    // cv::cvtColor(img_right_g, cright, CV_GRAY2BGR);
-    // su::draw_horiz_lines(cleft, 50, 3);
-    // su::draw_horiz_lines(cright, 50, 3);
-
-    // cv::remap(img_left_g, img_left_g, map1_left, map2_left, CV_INTER_LINEAR);
-    // cv::remap(img_right_g, img_right_g, map1_right, map2_right, CV_INTER_LINEAR);
-
-    // cv::remap(cleft, cleft, map1_left, map2_left, CV_INTER_LINEAR);
-    // cv::remap(cright, cright, map1_right, map2_right, CV_INTER_LINEAR);
-    // cv::resize(cleft, cleft, cv::Size(), 0.25, 0.25);
-    // cv::resize(cright, cright, cv::Size(), 0.25, 0.25);
-    // cv::imshow("cleft", cleft);
-    // cv::imshow("cright", cright);
-
+    rectify_one(argv[1], argv[2]);
     // double scale = 0.25;
     // cv::resize(img_left_g, img_left_g, cv::Size(), scale, scale);
     // cv::resize(img_right_g, img_right_g, cv::Size(), scale, scale);
 
     // rectify(argv[1], argv[2]);
-
-    stream_eval(argv[1], argv[2]);
+    // eval_one(argv[1], argv[2], 0, 256);
+    // stream_eval(argv[1], argv[2]);
 
     // cout << disp << endl;
     // disp.convertTo(disp_vis, CV_8UC1);
